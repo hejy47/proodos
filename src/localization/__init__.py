@@ -9,11 +9,11 @@ from .batch_runner import (
     BatchLocalizationSummary,
     load_batch_localization_cases,
 )
-from .fl_engine import FaultLocalizationEngine
+from .repair_engine import RepairOrchestrator
 from .runner import LocalizationStageRunner
 
 __all__ = [
-    "FaultLocalizationEngine",
+    "RepairOrchestrator",
     "LOCALIZATION_CASE_RESULTS_FILENAME",
     "LOCALIZATION_SUMMARY_FILENAME",
     "BatchLocalizationCase",

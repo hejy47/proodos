@@ -5,7 +5,7 @@ from typing import Sequence
 from src.localization.semantic_agent.tools.function_tool import function_tool
 from src.localization.semantic_agent.agent import Agent, validate_explanation
 from src.localization.semantic_agent.prompt import (
-    association_agent_system_prompt, association_agent_few_shot,
+    fault_localization_agent_system_prompt, fault_localization_agent_few_shot,
 )
 from src.localization.semantic_agent.tools.evidence_tools import (
     load_case_graph, read_entity_text, search_entities_text, tool_json,
@@ -15,10 +15,10 @@ from src.fault_graph.method_id_map import resolve_known_method_id
 from src.localization.semantic_agent.tools.runtime_experiments import RuntimeExperiments
 
 
-class AssociationAgent:
+class FaultLocalizationAgent:
     """Search source, observe execution, and propose a testable suspect."""
-    name = "association_agent"
-    instructions = association_agent_system_prompt + "\n" + association_agent_few_shot
+    name = "fault_localization_agent"
+    instructions = fault_localization_agent_system_prompt + "\n" + fault_localization_agent_few_shot
     max_steps = 10
 
     def __init__(self, llm_settings, preprocess_data, output_dir, test_id, *, project=None, runtime=None):

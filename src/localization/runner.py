@@ -6,8 +6,7 @@ from pathlib import Path
 from config import PathSettings, LLMSettings
 from src.project import Project
 from src.models import PipelineStageStatus
-from src.preprocess.context import load_preprocess_context, resolve_preprocess_path
-from src.localization.fl_engine import FaultLocalizationEngine
+from src.localization.repair_engine import RepairOrchestrator
 from src.utils import json_utils, llm_util
 from src.utils.output_paths import CaseOutputPaths, default_output_root
 
@@ -27,11 +26,13 @@ class LocalizationStageRunner:
             paths: PathSettings,
             llm_settings: LLMSettings,
             preprocess_dataset_path: Path,
-            result_dir: Path | None = None,):
+            result_dir: Path | None = None,
+            test_case_id: str | None = None,):
         self.project = project
         self.paths = paths
         self.llm_settings = llm_settings
-        self.preprocess_dataset_path = resolve_preprocess_path(preprocess_dataset_path)
+        self.preprocess_dataset_path = Path(preprocess_dataset_path)
+        self.test_case_id = test_case_id
         self.result_dir = Path(result_dir) if result_dir is not None else None
 
     def run(self):
@@ -51,29 +52,13 @@ class LocalizationStageRunner:
         result_dir.mkdir(parents=True, exist_ok=True)
         report_json_path.unlink(missing_ok=True)
 
-        if not self.preprocess_dataset_path.exists():
-            payload = {
-                "project_spec": self.project.spec,
-                "message": f"Dataset not found at {self.preprocess_dataset_path}. Please run the preprocess stage first."
-            }
-            raise FileNotFoundError(payload)
-
-        preprocess_data = load_preprocess_context(self.preprocess_dataset_path)
-        if not preprocess_data.method_ids:
-            payload = {
-                "project_spec": self.project.spec,
-                "message": f"No candidate methods found in the dataset at {self.preprocess_dataset_path}. Cannot run localization stage."
-            }
-            raise ValueError(payload)
-
-        fl_engine = FaultLocalizationEngine(
-            llm_settings=self.llm_settings,
-            preprocess_data=preprocess_data,
-            output_dir=stage_dir,
-            project=self.project,
+        repair_engine = RepairOrchestrator(
+            project=self.project, project_spec=self.project.spec, paths=self.paths,
+            llm_settings=self.llm_settings, result_dir=result_dir,
+            test_case_id=self.test_case_id,
         )
         with llm_util.collect_usage() as cb:
-            fl_ranks = fl_engine.run()
+            fl_ranks = repair_engine.run()
         total_tokens = cb.total_tokens
         duration_seconds = time.perf_counter() - started_at
 
@@ -90,11 +75,16 @@ class LocalizationStageRunner:
         if not isinstance(saved_report.get("ranked_methods"), list) or not isinstance(saved_report.get("explanation"), str):
             raise ValueError(f"Localization result at {report_json_path} is missing ranked_methods or explanation")
 
+        run_status = (
+            PipelineStageStatus.SUCCESS
+            if fl_ranks.get("repair_status") == "success"
+            else PipelineStageStatus.FAILED
+        )
         return LocalizationRunSummary(
             project=str(self.project.spec),
             output_dir=stage_dir,
             result_dir=result_dir,
             result_path=report_json_path,
-            status=PipelineStageStatus.SUCCESS,
+            status=run_status,
             message=f"Localization completed in {duration_seconds:.2f} seconds. Token cost: {total_tokens}. Report saved in {report_json_path}."
         )

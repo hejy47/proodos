@@ -1,7 +1,7 @@
 """Agent-facing tool result formatting.
 
 Evidence-first observations for the three-stage localization tools:
-- ``probe_function`` / ``execute_intervention`` return evidence summaries without
+- ``probe_function`` / ``trace_functions`` return evidence summaries without
   coaching the agent on causal roles.
 - Source-navigation tools may still use the ``format_tool_result`` envelope
   (status / summary / body).
@@ -12,17 +12,11 @@ from __future__ import annotations
 import re
 from typing import Any, Sequence
 
-from src.localization.semantic_agent.intervention_evidence import (
-    derive_tool_intervention_fields,
-)
-
-
 DEFAULT_TRUNCATE = 1200
 CODE_TRUNCATE = 3500
 STDOUT_TRUNCATE = 800
 OBSERVED_TRUNCATE = 400
 MAX_OBSERVED_SAMPLES = 3
-MAX_STUB_CHARS = 2000
 
 
 def truncate(text: str | None, limit: int = DEFAULT_TRUNCATE) -> str:
@@ -60,102 +54,6 @@ def format_tool_result(
         lines.append("")
         lines.extend(body)
     return "\n".join(lines)
-
-
-def format_intervention_result(payload: dict[str, Any]) -> str:
-    """Evidence-style execute_intervention output for the intervention agent.
-
-    Reports the replacement and the resulting test or reproducer evidence.
-    """
-    evidence = derive_tool_intervention_fields(payload)
-    method_id = str(payload.get("method_id") or "?")
-    status = str(payload.get("status") or "unknown")
-    original = evidence.get("original_test_result") or "unknown"
-    intervened = evidence.get("intervention_test_result") or "not_run"
-    replacement = str(payload.get("replacement_function") or "").strip()
-
-    lines = [
-        "## Intervention Result",
-        f"status: {status}",
-        f"attempts: {payload.get('attempts', 0)}",
-        "",
-        "Method:",
-        method_id,
-        "",
-        "Intervention:",
-    ]
-    if replacement:
-        lines.append("Simulated an alternative behavior for the suspect method:")
-        lines.append("")
-        lines.append("```c" if method_id.split("#", 1)[0].endswith((".c", ".h")) else "```java")
-        lines.append(truncate(replacement, MAX_STUB_CHARS))
-        lines.append("```")
-    else:
-        lines.append("(no stub body recorded)")
-
-    observed_effect = _intervention_observed_effect(evidence, payload)
-    lines.extend(
-        [
-            "",
-            "Execution Result:",
-            f"baseline = {original}",
-            f"intervention = {intervened}",
-            f"original = {original}",
-            f"intervention_result = {intervened}",
-            "",
-            "Execution Report:",
-            truncate(str(payload.get("stdout") or "(no report captured)"), 2000),
-            "",
-            "Observed Effect:",
-            observed_effect,
-        ]
-    )
-    if payload.get("error"):
-        lines.extend(["", "Tool Error:", truncate(str(payload["error"]), 800)])
-        if "compile" in str(payload["error"]).lower():
-            lines.append("The replacement did not compile.")
-    if payload.get("stderr"):
-        lines.extend(["", "Build/runtime diagnostics:", truncate(str(payload["stderr"]), 2000)])
-
-    # Surface compile/runtime errors briefly when the stub never ran.
-    if evidence.get("intervention_status") in {"compile_error", "unsupported"}:
-        detail = payload.get("validation_error") or payload.get("error")
-        if detail:
-            lines.append("")
-            lines.append(truncate(str(detail), 500))
-
-    return "\n".join(lines)
-
-
-def _intervention_observed_effect(
-    evidence: dict[str, Any],
-    payload: dict[str, Any],
-) -> str:
-    error = str(payload.get("error") or "").lower()
-    if "max execute attempts" in error or "global intervention budget" in error:
-        return "The intervention was not run because the experiment budget was exhausted."
-    if "kernel rebuild" in error:
-        return "The kernel build failed before the intervention test could run."
-    derived = evidence.get("intervention_status")
-    if derived == "compile_error":
-        return "The intervention did not compile."
-    if derived == "unsupported":
-        return "The intervention could not be applied on this method."
-    if payload.get("status") != "success":
-        return "The intervention did not produce a usable test outcome."
-
-    outcome = evidence.get("outcome")
-    if outcome == "crash_disappeared":
-        return (
-            "The failing test passed when the suspect method was replaced "
-            "with the simulated behavior."
-        )
-    if outcome == "still_failing":
-        return (
-            "The failing test still failed when the suspect method was replaced "
-            "with the simulated behavior."
-        )
-    return "The intervention completed, but the test outcome is unclear."
 
 
 def format_observation_result(payload: dict[str, Any]) -> str:

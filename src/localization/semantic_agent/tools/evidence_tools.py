@@ -1,4 +1,4 @@
-"""Case graph loading and readable entity tool responses for AssociationAgent."""
+"""Case graph loading and readable entity tool responses for FaultLocalizationAgent."""
 
 from __future__ import annotations
 

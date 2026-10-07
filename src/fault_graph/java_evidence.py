@@ -312,7 +312,8 @@ def _failure_inputs(root: Path, selected_test: str | None):
     return failures
 
 
-def build_java_evidence(*, project, case_id: str, test_case_id: str | None = None) -> EvidenceGraph:
+def build_java_evidence(*, project, case_id: str, test_case_id: str | None = None,
+                        failing_tests=None) -> EvidenceGraph:
     root = project.project_path.resolve()
     if not root.is_dir():
         raise ValueError(f"Java project root does not exist: {root}")
@@ -323,7 +324,13 @@ def build_java_evidence(*, project, case_id: str, test_case_id: str | None = Non
     tests_by_name, methods = index_java_source(graph, root, project.discover_test_roots())
     if not methods:
         raise ValueError("No Java methods with source bodies were found")
-    failures = _failure_inputs(root, test_case_id)
+    # Repair rounds use the latest regression result, never stale reports left
+    # behind by a single-test validation or an earlier project version.
+    failures = (_failure_inputs(root, test_case_id) if failing_tests is None else {
+        test.test_id: dict(report=test.stack_trace or test.failure_message,
+                           artifact="current_regression", observed_failure=True)
+        for test in failing_tests
+    })
     if not failures:
         raise ValueError(
             "No PoV/failing test inputs found; provide existing JUnit/VUL4J reports, "

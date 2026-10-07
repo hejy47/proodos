@@ -236,6 +236,7 @@ class CausalFLPipeline:
             llm_settings=self.context.settings.llm,
             preprocess_dataset_path=preprocess_paths.output_dir,
             result_dir=self.context.result_dir,
+            test_case_id=self.context.test_case_id,
         )
         result = runner.run()
         return PipelineStageResult(

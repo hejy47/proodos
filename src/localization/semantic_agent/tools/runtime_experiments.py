@@ -2,33 +2,29 @@ from __future__ import annotations
 
 import re
 from typing import Any
-from src.intervention.c_kernel import apply_c_intervention, apply_c_observation
-from src.intervention.java.bridge import apply_intervention, apply_observation
+from src.intervention.c_kernel import apply_c_observation
+from src.intervention.java.bridge import apply_observation
 from src.intervention.java.tracing import collect_java_trace
 from src.intervention.c_kernel.tracing import collect_ftrace, format_ftrace_result
-from src.localization.semantic_agent.tools.tool_response import format_intervention_result, format_observation_result
+from src.localization.semantic_agent.tools.tool_response import format_observation_result
 
-MAX_EXECUTE_ATTEMPTS = 2
 MAX_OBSERVE_ATTEMPTS = 2
 MAX_TOTAL_INTERVENTION_CALLS = 6
 
 
 class RuntimeExperiments:
-    """Case-scoped experiment budgets and raw results shared by the three stages."""
+    """Case-scoped experiment budgets and raw results for fault localization."""
     def __init__(self, project, preprocess_data, test_id):
         self.project = project
         self.project_root = project.spec.project_path if project is not None else None
         self.preprocess_data = preprocess_data
         self.test_id = test_id
-        self._execute_attempts = {}
         self._observe_attempts = {}
         self._total_intervention_calls = 0
         self._guest_unavailable_reason: str | None = None
-        self._last_execute_results = {}
         self._last_observe_results = {}
         self.history = []
         self._cache = {}
-        self.allowed_method_id = None
 
     @property
     def can_run_runtime_experiment(self) -> bool:
@@ -174,93 +170,6 @@ class RuntimeExperiments:
         self._last_observe_results[method_id] = result
         return format_observation_result(result)
 
-    def _execute_intervention(self, method_id: str, replacement_function: str) -> str:
-        attempts = self._execute_attempts.get(method_id, 0)
-        if not self.can_run_runtime_experiment:
-            return self._blocked_runtime_result(method_id)
-        if self.project is None or self.project_root is None:
-            return format_intervention_result(
-                {
-                    "status": "execution_error",
-                    "error": "Intervention requires a project (with project_path).",
-                    "method_id": method_id,
-                    "replacement_function": replacement_function,
-                    "attempts": attempts,
-                }
-            )
-        language = self._backend_language()
-        if language not in {"", "java", "c"}:
-            return format_intervention_result(
-                {
-                    "status": "unsupported",
-                    "error": self._non_jvm_reason(),
-                    "method_id": method_id,
-                    "replacement_function": replacement_function,
-                    "attempts": attempts,
-                }
-            )
-        if self._total_intervention_calls >= MAX_TOTAL_INTERVENTION_CALLS:
-            return format_intervention_result(
-                {
-                    "status": "execution_error",
-                    "error": (
-                        f"Global intervention budget ({MAX_TOTAL_INTERVENTION_CALLS} "
-                        "observe+execute calls) exhausted for this case; classify from "
-                        "existing evidence instead."
-                    ),
-                    "method_id": method_id,
-                    "replacement_function": replacement_function,
-                    "attempts": attempts,
-                }
-            )
-        if attempts >= MAX_EXECUTE_ATTEMPTS:
-            last = self._last_execute_results.get(method_id) or {}
-            return format_intervention_result(
-                {
-                    "status": "execution_error",
-                    "error": (
-                        f"Max execute attempts ({MAX_EXECUTE_ATTEMPTS}) reached for "
-                        f"{method_id}; stop further execute_intervention (single-method budget "
-                        "exhausted). Still write the full Causal Report for the Counterfactual Agent "
-                        "(unsupported/inert; do not stub other methods)."
-                    ),
-                    "method_id": method_id,
-                    "replacement_function": replacement_function,
-                    "attempts": attempts,
-                    "outcome": last.get("outcome"),
-                    "test_passed": last.get("test_passed"),
-                    "selected_mode": last.get("selected_mode"),
-                    "generated_source_code": last.get("generated_source_code"),
-                    "stdout": last.get("stdout"),
-                    "stderr": last.get("stderr"),
-                }
-            )
-
-        attempts += 1
-        self._execute_attempts[method_id] = attempts
-        self._total_intervention_calls += 1
-        if language == "c":
-            result = apply_c_intervention(
-                project=self.project,
-                preprocess_data=self.preprocess_data,
-                test_id=self.test_id,
-                method_id=method_id,
-                replacement_function=replacement_function,
-            )
-        else:
-            result = apply_intervention(
-                project_root=self.project_root,
-                test_id=self.test_id,
-                method_id=method_id,
-                replacement_function=replacement_function,
-            )
-        result["attempts"] = attempts
-        result.setdefault("method_id", method_id)
-        if result.get("status") in {"execution_error", "validation_error", "unsupported"}:
-            self._execute_attempts[method_id] = MAX_EXECUTE_ATTEMPTS
-        self._last_execute_results[method_id] = result
-        return format_intervention_result(result)
-
     def _backend_language(self) -> str:
         metadata = getattr(self.preprocess_data, "metadata", None) or {}
         return str(metadata.get("language", "java")).strip().lower()
@@ -273,7 +182,7 @@ class RuntimeExperiments:
         return (
             f"Observation/intervention is not supported for this {language} "
             f"project (no Java test runner, no C kernel backend). Do not call "
-            f"probe_function/execute_intervention for this case — classify from "
+            f"probe_function/trace_functions for this case — classify from "
             f"source and propagation evidence instead."
         )
 
@@ -294,12 +203,6 @@ class RuntimeExperiments:
     def probe_function(self, method_id, probe_spec=""):
         return self._run("probe_function", [method_id, probe_spec],
                          lambda: self._probe_function(method_id, probe_spec))
-
-    def execute_intervention(self, method_id, replacement_function):
-        if method_id != self.allowed_method_id:
-            return "status: validation_error\nerror: Intervention must target the current indexed suspect."
-        return self._run("execute_intervention", [method_id, replacement_function],
-                         lambda: self._execute_intervention(method_id, replacement_function))
 
     def trace_functions(self, method_ids, max_events=1000):
         def run():

@@ -14,7 +14,6 @@ from src.utils import llm_util
 from src.utils.agent_logging import append_log, log_completion
 
 
-SPECIALIST_TOOLS = {"request_association", "request_intervention", "request_counterfactual"}
 MAX_FINAL_ATTEMPTS = 2
 
 
@@ -155,7 +154,6 @@ class Agent:
         return report
 
     def _execute_calls(self, calls, messages, step, *, disabled):
-        selected_specialist = None
         # Run calls synchronously in response order, including runtime experiments.
         for call in calls:
             name = call.function.name
@@ -163,13 +161,9 @@ class Agent:
             try:
                 if disabled:
                     result = {"status": "skipped", "error": "No tool executed: finalization or truncated response."}
-                elif name in SPECIALIST_TOOLS and selected_specialist is not None:
-                    result = {"status": "skipped", "error": f"Inspect the {selected_specialist} report before requesting another specialist."}
                 elif not self.tool_available(name):
                     result = {"status": "skipped", "error": "This tool is unavailable for the remainder of the case. Continue with the evidence already collected."}
                 else:
-                    if name in SPECIALIST_TOOLS:
-                        selected_specialist = name
                     tool = self.tools.get(name)
                     if tool is None:
                         raise ValueError(f"Unknown tool: {name}")
