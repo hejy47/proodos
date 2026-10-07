@@ -159,8 +159,9 @@ class BatchLocalizationRunner:
         spec = ProjectSpec(case.dataset, case.project_path, case.project_id, case.bug_id or case.case_id)
         outputs = CaseOutputPaths.from_project(spec, default_output_root(self.repo_root))
         result_dir = case.result_dir or outputs.result_dir
-        fl_result_path = result_dir / outputs.ranking_path.name
-        if fl_result_path.exists():
+        patch_path = result_dir / outputs.patch_path.name
+        completion_marker = case.localization_dir / "repair_complete"
+        if patch_path.exists() and completion_marker.is_file():
             return BatchLocalizationCaseResult(
                 case_id=case.case_id,
                 dataset=case.dataset,
@@ -168,11 +169,11 @@ class BatchLocalizationRunner:
                 preprocess_dir=case.preprocess_dir,
                 localization_dir=case.localization_dir,
                 result_dir=result_dir,
-                result_path=fl_result_path,
+                result_path=patch_path,
                 stage="localization",
                 success=True,
                 return_code=0,
-                stdout=f"FL result already exists at {fl_result_path}, skipping localization.",
+                stdout=f"Repair patch already exists at {patch_path}, skipping localization.",
                 stderr="",
             )
         case.localization_dir.mkdir(parents=True, exist_ok=True)
@@ -216,7 +217,7 @@ class BatchLocalizationRunner:
             stdout=completed.stdout or "",
             stderr=completed.stderr or "",
             result_dir=result_dir,
-            result_path=fl_result_path,
+            result_path=patch_path,
         )
 
 

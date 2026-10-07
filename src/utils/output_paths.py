@@ -1,4 +1,4 @@
-"""Shared case layout: working artifacts under log, rankings under results."""
+"""Shared case layout: working artifacts under log, repair patches under results."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -28,8 +28,9 @@ def project_case_id(spec: ProjectSpec) -> str:
     return _path_component(str(spec.bug_id or spec.project_id or spec.project_path.name))
 
 
-def ranking_filename(case_id: str) -> str:
-    return f"{_path_component(case_id)}_ranking.json"
+def patch_filename(case_id: str) -> str:
+    """Return the standard unified-diff artifact name for one repaired case."""
+    return f"{_path_component(case_id)}.patch"
 
 
 @dataclass(frozen=True)
@@ -68,8 +69,8 @@ class CaseOutputPaths:
         return self.output_root / "results" / self.dataset
 
     @property
-    def ranking_path(self) -> Path:
-        return self.result_dir / ranking_filename(self.case_id)
+    def patch_path(self) -> Path:
+        return self.result_dir / patch_filename(self.case_id)
 
 
 def kernel_runtime_dir(case_id: str) -> Path:

@@ -46,7 +46,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--result_dir",
-        help="Directory for <case>_ranking.json files (default: output/results/<dataset>)",
+        help="Directory for <case>.patch files (default: output/results/<dataset>)",
     )
     parser.add_argument(
         "--stage",

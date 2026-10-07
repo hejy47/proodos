@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-import json
 import time
 import shutil
 from pathlib import Path
@@ -40,17 +39,19 @@ class LocalizationStageRunner:
         stage_dir = self.paths.output_dir
         outputs = CaseOutputPaths.from_project(self.project.spec, default_output_root(self.paths.project_root))
         result_dir = self.result_dir or outputs.result_dir
-        report_json_path = result_dir / outputs.ranking_path.name
+        patch_path = result_dir / outputs.patch_path.name
 
-        # Cleaning one case's logs must never remove the shared rankings.
+        # Cleaning one case's logs must never remove the shared patch artifact.
         if result_dir.resolve().is_relative_to(stage_dir.resolve()):
             raise ValueError("The result directory must be outside the localization log directory")
 
         if stage_dir.exists():
             shutil.rmtree(stage_dir)
         stage_dir.mkdir(parents=True, exist_ok=True)
+        completion_marker = stage_dir / "repair_complete"
         result_dir.mkdir(parents=True, exist_ok=True)
-        report_json_path.unlink(missing_ok=True)
+        patch_path.unlink(missing_ok=True)
+        (result_dir / f"{outputs.case_id}_ranking.json").unlink(missing_ok=True)
 
         repair_engine = RepairOrchestrator(
             project=self.project, project_spec=self.project.spec, paths=self.paths,
@@ -58,7 +59,7 @@ class LocalizationStageRunner:
             test_case_id=self.test_case_id,
         )
         with llm_util.collect_usage() as cb:
-            fl_ranks = repair_engine.run()
+            repair_result = repair_engine.run()
         total_tokens = cb.total_tokens
         duration_seconds = time.perf_counter() - started_at
 
@@ -68,23 +69,27 @@ class LocalizationStageRunner:
             "total_tokens": cb.total_tokens,
         }) + "\n", encoding="utf-8")
 
-        json_utils.write_json_atomic(report_json_path, fl_ranks, sort_keys=False)
-        # Read back the exact artifact before returning SUCCESS. This catches
-        # path/serialization errors while the stage can still report failure.
-        saved_report = json.loads(report_json_path.read_text(encoding="utf-8"))
-        if not isinstance(saved_report.get("ranked_methods"), list) or not isinstance(saved_report.get("explanation"), str):
-            raise ValueError(f"Localization result at {report_json_path} is missing ranked_methods or explanation")
+        patch_text = "".join(
+            str(item.get("diff") or "").rstrip("\n") + "\n"
+            for item in repair_result.get("accepted_patches", [])
+            if str(item.get("diff") or "").strip()
+        )
+        patch_path.write_text(patch_text, encoding="utf-8")
+        if patch_path.read_text(encoding="utf-8") != patch_text:
+            raise ValueError(f"Repair patch at {patch_path} could not be verified")
 
         run_status = (
             PipelineStageStatus.SUCCESS
-            if fl_ranks.get("repair_status") == "success"
+            if repair_result.get("repair_status") == "success"
             else PipelineStageStatus.FAILED
         )
+        if run_status == PipelineStageStatus.SUCCESS:
+            completion_marker.touch()
         return LocalizationRunSummary(
             project=str(self.project.spec),
             output_dir=stage_dir,
             result_dir=result_dir,
-            result_path=report_json_path,
+            result_path=patch_path,
             status=run_status,
-            message=f"Localization completed in {duration_seconds:.2f} seconds. Token cost: {total_tokens}. Report saved in {report_json_path}."
+            message=f"Repair completed in {duration_seconds:.2f} seconds. Token cost: {total_tokens}. Patch saved in {patch_path}."
         )
