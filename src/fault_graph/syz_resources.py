@@ -102,7 +102,7 @@ def add_syz_resources(graph: EvidenceGraph, text: str, *, source: str) -> None:
     calls = parse_explicit_resources(text)
     defined = {}
     for call in calls:
-        # The graph is scoped to one localization case; keep node IDs local to
+        # The graph is scoped to one debugging case; keep node IDs local to
         # that graph and store the case ID in graph metadata.
         cid = f"call:{call['call_index']}"
         provenance = dict(extractor="syz_explicit_reference_scanner_v1", source=source,

@@ -1,4 +1,4 @@
-"""OpenAI SDK client construction and localization token accounting."""
+"""OpenAI SDK client construction and debug-stage token accounting."""
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -30,7 +30,7 @@ class UsageTotals:
                 self.output_tokens += usage.completion_tokens
 
 
-_usage: ContextVar[UsageTotals | None] = ContextVar("localization_usage", default=None)
+_usage: ContextVar[UsageTotals | None] = ContextVar("debug_usage", default=None)
 
 
 @contextmanager

@@ -1,4 +1,4 @@
-"""Load the shared static fault-context graph used by preprocessing and localization."""
+"""Load the shared static fault-context graph used by preprocessing and debugging."""
 from __future__ import annotations
 
 from collections.abc import Sequence

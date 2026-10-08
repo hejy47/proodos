@@ -1,7 +1,7 @@
 [project]
 name = "proodos"
 version = "0.1.0"
-description = "Causal-Aware Fault Localization and Automated Repair"
+description = "Evidence-guided debugging and automated repair"
 requires-python = ">=3.13"
 dependencies = [
     "jsonlines==4.0.0",

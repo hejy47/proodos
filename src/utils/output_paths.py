@@ -1,4 +1,5 @@
-"""Shared case layout: working artifacts under log, repair patches under results."""
+"""Shared output layout for one debugging/repair case."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -12,8 +13,11 @@ from src.models import ProjectSpec
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def default_output_root(repo_root: Path = REPO_ROOT) -> Path:
-    return Path(os.environ.get("CAUSALFL_OUTPUT_ROOT") or repo_root / "output").expanduser().resolve()
+def default_result_dir(repo_root: Path = REPO_ROOT) -> Path:
+    """Return the root directory for generated case artifacts."""
+    return Path(
+        os.environ.get("CAUSALFL_RESULT_DIR") or repo_root / "output"
+    ).expanduser().resolve()
 
 
 def _path_component(value: str) -> str:
@@ -35,48 +39,40 @@ def patch_filename(case_id: str) -> str:
 
 @dataclass(frozen=True)
 class CaseOutputPaths:
+    """All artifacts for a case below one caller-provided result directory."""
+
     dataset: str
     case_id: str
-    output_root: Path = field(default_factory=default_output_root)
+    result_dir: Path = field(default_factory=default_result_dir)
 
     def __post_init__(self):
         _path_component(self.dataset)
         _path_component(self.case_id)
 
     @classmethod
-    def from_project(cls, spec: ProjectSpec, output_root: Path | None = None):
-        return cls(spec.dataset.lower(), project_case_id(spec),
-                   output_root if output_root is not None else default_output_root())
+    def from_project(cls, spec: ProjectSpec, result_dir: Path | None = None):
+        return cls(
+            spec.dataset.lower(),
+            project_case_id(spec),
+            result_dir if result_dir is not None else default_result_dir(),
+        )
 
     @property
     def log_dir(self) -> Path:
-        return self.output_root / "log" / self.dataset / self.case_id
+        return self.result_dir / "log" / self.dataset / self.case_id
 
     @property
     def preprocess_dir(self) -> Path:
         return self.log_dir / "preprocess"
 
     @property
-    def localization_dir(self) -> Path:
-        return self.log_dir / "localization"
+    def debug_dir(self) -> Path:
+        return self.log_dir / "debug"
 
     @property
-    def runtime_dir(self) -> Path:
-        return self.log_dir / "runtime"
-
-    @property
-    def result_dir(self) -> Path:
-        return self.output_root / "results" / self.dataset
+    def patch_dir(self) -> Path:
+        return self.result_dir / "results" / self.dataset
 
     @property
     def patch_path(self) -> Path:
-        return self.result_dir / patch_filename(self.case_id)
-
-
-def kernel_runtime_dir(case_id: str) -> Path:
-    dataset = os.environ.get("CAUSALFL_KERNEL_DATASET", "cohiker").strip().lower()
-    if dataset in {"recent", "recent_syz", "recentsyz"}:
-        dataset = "recent_syz"
-    else:
-        dataset = "cohiker"
-    return CaseOutputPaths(dataset, case_id).runtime_dir
+        return self.patch_dir / patch_filename(self.case_id)

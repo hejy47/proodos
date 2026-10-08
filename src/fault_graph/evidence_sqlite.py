@@ -25,7 +25,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 def resolve_indexed_source_root(stored: str | None) -> Path:
     """Map a preprocess-time source root onto the current checkout.
 
-    Indexing inside the dataset container stores ``/data/...``. Localization may
+    Indexing inside the dataset container stores ``/data/...``. Debugging may
     run on the host, where that path is missing but ``COHIKER_LINUX_DIR`` or the
     repo-mounted tree is present.
     """

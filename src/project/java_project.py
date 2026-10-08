@@ -66,16 +66,16 @@ class JavaProject(Project):
 
     def discover_tests(self) -> list[TestCase]:
         artifact_roots = self._compiled_test_artifact_roots()
-        # Static preprocessing and bootstrap run on a clean Vul4J checkout,
+        # Static preprocessing and debugging run on a clean Vul4J checkout,
         # before Maven has created target/test-classes. No compiled tests are
-        # discoverable yet; let the later localization tools build what they
+        # discoverable yet; let the later debug tools build what they
         # need instead of failing while describing the project.
         if not artifact_roots:
             return []
         runtime_classpath = self.test_runtime_classpath()
         if not runtime_classpath or not runtime_classpath.strip():
             # Some older Maven installations cannot run the newest exec plugin.
-            # Test discovery is optional metadata during bootstrap/preprocess.
+            # Test discovery is optional metadata during preprocessing and debugging.
             return []
         return discover_compiled_test_cases(
             self.project_path,

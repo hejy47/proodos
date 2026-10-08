@@ -35,15 +35,7 @@ class PathSettings:
 class RuntimeSettings:
     llm: LLMSettings
     preprocess_paths: PathSettings | None
-    localization_paths: PathSettings | None
-
-    @property
-    def paths(self) -> PathSettings:
-        if self.preprocess_paths is not None:
-            return self.preprocess_paths
-        if self.localization_paths is not None:
-            return self.localization_paths
-        raise AttributeError("RuntimeSettings has no configured path settings")
+    debug_paths: PathSettings | None
 
 
 def load_dotenv_file(dotenv_path: Path | None = None) -> None:
@@ -140,7 +132,7 @@ def _first_nonempty_env(*keys: str) -> str | None:
 def build_runtime_settings(
     project_path: str | Path | None = None,
     preprocess_dir: str | Path | None = None,
-    localization_dir: str | Path | None = None,
+    debug_dir: str | Path | None = None,
 ) -> RuntimeSettings:
     load_dotenv_file()
 
@@ -154,13 +146,13 @@ def build_runtime_settings(
         if preprocess_dir is not None
         else None
     )
-    localization_paths = (
+    debug_paths = (
         _build_path_settings(
             project_root=PROJECT_ROOT,
             project_path=resolved_project_path,
-            output_dir=resolve_output_dir(localization_dir),
+            output_dir=resolve_output_dir(debug_dir),
         )
-        if localization_dir is not None
+        if debug_dir is not None
         else None
     )
 
@@ -168,5 +160,5 @@ def build_runtime_settings(
     return RuntimeSettings(
         llm=llm,
         preprocess_paths=preprocess_paths,
-        localization_paths=localization_paths,
+        debug_paths=debug_paths,
     )

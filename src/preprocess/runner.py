@@ -44,39 +44,18 @@ class PreprocessStageRunner:
         self.paths = paths
         self.test_case_id = test_case_id
 
-    def run(
-        self,
-        *,
-        dry_run: bool = False,
-    ) -> PreprocessRunSummary:
+    def run(self) -> PreprocessRunSummary:
         output_dir = self.paths.output_dir
         output_dir.mkdir(parents=True, exist_ok=True)
 
         print(f"Preprocess {self.project_spec.dataset} {self.project_spec.project_id}-{self.project_spec.bug_id}...")
 
         # Kernel cases are represented by a static fault-context graph. Runtime
-        # instrumentation (KCOV, ftrace, or the legacy C probe) belongs to
-        # localization-time tools and must not create an instrumentation
-        # directory during preprocessing.
+        # instrumentation belongs to debug-time tools and must not create
+        # an instrumentation directory during preprocessing.
         if is_kernel_dataset(self.project_spec.dataset):
-            if dry_run:
-                if output_dir.exists():
-                    shutil.rmtree(output_dir)
-                output_dir.mkdir(parents=True, exist_ok=True)
-                return PreprocessRunSummary(
-                    project=f"{self.project_spec.dataset} {self.project_spec.project_id}-{self.project_spec.bug_id}",
-                    output_dir=output_dir,
-                    status=PipelineStageStatus.SUCCESS,
-                    message="Dry run validated static kernel graph inputs; no indexing or instrumentation performed",
-                )
             return self._run_kernel_static_graph()
 
-        if dry_run:
-            return PreprocessRunSummary(
-                project=f"{self.project_spec.dataset} {self.project_spec.bug_id}",
-                output_dir=output_dir, status=PipelineStageStatus.SUCCESS,
-                message="Dry run: no Java indexing, test execution, or instrumentation performed",
-            )
         return self._run_java_static_graph()
 
     def _run_java_static_graph(self) -> PreprocessRunSummary:

@@ -121,13 +121,7 @@ class PipelineStageResult:
 class PipelineRunSummary:
     project: ProjectSpec
     stage_results: list[PipelineStageResult]
-    preprocess_dir: Path | None = None
-    localization_dir: Path | None = None
-    result_dir: Path | None = None
-
-    @property
-    def output_dir(self) -> Path | None:
-        return self.localization_dir or self.preprocess_dir
+    result_dir: Path
 
     @property
     def succeeded(self) -> bool:
@@ -135,16 +129,11 @@ class PipelineRunSummary:
 
     def to_console(self) -> str:
         lines = [
-            "CausalFL pipeline summary",
+            "Debug pipeline summary",
             f"project: {self.project.project_path}",
             f"dataset: {self.project.dataset}",
         ]
-        if self.preprocess_dir is not None:
-            lines.append(f"preprocess_dir: {self.preprocess_dir}")
-        if self.localization_dir is not None:
-            lines.append(f"localization_dir: {self.localization_dir}")
-        if self.result_dir is not None:
-            lines.append(f"result_dir: {self.result_dir}")
+        lines.append(f"result_dir: {self.result_dir}")
         if self.project.project_id:
             lines.append(f"project_id: {self.project.project_id}")
         if self.project.bug_id:
