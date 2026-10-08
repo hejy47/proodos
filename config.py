@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from dotenv import load_dotenv
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 DEFAULT_OUTPUT_DIRNAME = "output"
@@ -40,19 +42,7 @@ class RuntimeSettings:
 
 def load_dotenv_file(dotenv_path: Path | None = None) -> None:
     """Populate unset environment variables from a local .env file."""
-    dotenv_path = dotenv_path or PROJECT_ROOT / ".env"
-    if not dotenv_path.exists():
-        return
-
-    for raw_line in dotenv_path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip().strip("'").strip('"')
-        os.environ.setdefault(key, value)
+    load_dotenv(dotenv_path=dotenv_path or PROJECT_ROOT / ".env", override=False)
 
 
 def resolve_project_path(project_path: str | Path | None) -> Path:
