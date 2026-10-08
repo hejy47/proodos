@@ -120,7 +120,7 @@ class PreprocessStageRunner:
                 f"Required kernel {missing} is missing for case {case_id}"
             )
 
-        expected_commit = os.environ.get("CAUSALFL_KERNEL_COMMIT", "").strip()
+        expected_commit = os.environ.get("PROODOS_KERNEL_COMMIT", "").strip()
         commit_path = dataset_root / "datasets" / "case_commit.txt"
         if not expected_commit and commit_path.is_file():
             commits = {
@@ -132,7 +132,7 @@ class PreprocessStageRunner:
         actual_commit = kernel_git_head(source_root)
         if not actual_commit:
             if is_recent_syz_dataset(self.project_spec.dataset):
-                actual_commit = expected_commit or os.environ.get("CAUSALFL_KERNEL_VERSION", "unknown")
+                actual_commit = expected_commit or os.environ.get("PROODOS_KERNEL_VERSION", "unknown")
             else:
                 return self._failure(
                     f"Unable to read checked-out kernel commit at {source_root}"

@@ -15,19 +15,19 @@ KERNEL_DATASETS = {"cohiker", "recent", "recent_syz", "recentsyz"}
 
 
 def is_kernel_dataset(name: str | None = None) -> bool:
-    dataset = (name or os.environ.get("CAUSALFL_KERNEL_DATASET", "cohiker")).strip().lower()
+    dataset = (name or os.environ.get("PROODOS_KERNEL_DATASET", "cohiker")).strip().lower()
     return dataset in KERNEL_DATASETS
 
 
 def is_recent_syz_dataset(name: str | None = None) -> bool:
-    dataset = (name or os.environ.get("CAUSALFL_KERNEL_DATASET", "")).strip().lower()
+    dataset = (name or os.environ.get("PROODOS_KERNEL_DATASET", "")).strip().lower()
     return dataset in {"recent", "recent_syz", "recentsyz"}
 
 
 def kernel_git_head(source_root: Path) -> str | None:
     """Return HEAD only when *source_root* itself is a git worktree.
 
-    A tarball checkout nested in this repository must not inherit CausalFL's
+    A tarball checkout nested in this repository must not inherit Proodos's
     commit. ``git -C <dir> rev-parse HEAD`` walks parents when ``.git`` is
     missing.
     """
@@ -91,11 +91,11 @@ def repro_kind_for_path(path: Path | None) -> str:
 
 
 def resolve_kernel_syz_path(case_id: str, dataset_root: Path) -> Path | None:
-    explicit = os.environ.get("CAUSALFL_SYZ_PATH", "").strip()
+    explicit = os.environ.get("PROODOS_SYZ_PATH", "").strip()
     if explicit:
         path = Path(explicit)
         return path if path.is_file() else None
-    case_dir = os.environ.get("CAUSALFL_CASE_DIR", "").strip()
+    case_dir = os.environ.get("PROODOS_CASE_DIR", "").strip()
     if case_dir:
         root = Path(case_dir)
         for rel in _CASE_REPRO_RELPATHS:
@@ -107,11 +107,11 @@ def resolve_kernel_syz_path(case_id: str, dataset_root: Path) -> Path | None:
 
 
 def resolve_kernel_report_path(case_id: str, dataset_root: Path) -> Path | None:
-    explicit = os.environ.get("CAUSALFL_REPORT_PATH", "").strip()
+    explicit = os.environ.get("PROODOS_REPORT_PATH", "").strip()
     if explicit:
         path = Path(explicit)
         return path if path.is_file() else None
-    case_dir = os.environ.get("CAUSALFL_CASE_DIR", "").strip()
+    case_dir = os.environ.get("PROODOS_CASE_DIR", "").strip()
     if case_dir:
         root = Path(case_dir)
         for rel in _CASE_REPORT_RELPATHS:

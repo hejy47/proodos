@@ -1,4 +1,4 @@
-package causalfl.runner;
+package proodos.runner;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -23,7 +23,7 @@ final class TestNGExecutor {
 
     static TestExecutionResult run(TestSpec spec) {
         XmlSuite suite = new XmlSuite();
-        suite.setName("causalfl");
+        suite.setName("proodos");
         XmlTest test = new XmlTest(suite);
         test.setName(spec.testId());
         XmlClass xmlClass = new XmlClass(spec.className);

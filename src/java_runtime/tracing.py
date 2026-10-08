@@ -45,7 +45,7 @@ class JavaTraceCollector:
                 for test_case in selected_tests
             ]
 
-        with tempfile.TemporaryDirectory(prefix="causalfl-instrumentation-", dir=stage_dir) as temp_dir:
+        with tempfile.TemporaryDirectory(prefix="proodos-instrumentation-", dir=stage_dir) as temp_dir:
             temp_root = Path(temp_dir)
             tests_file = temp_root / "tests.txt"
             trace_report_dir = temp_root / "trace-report"
@@ -119,7 +119,7 @@ class JavaTraceCollector:
                 "java",
                 "-cp",
                 str(agent_jar_path),
-                "causalfl.trace.TraceReportMain",
+                "proodos.trace.TraceReportMain",
                 "--dataFile",
                 str(ser_file),
                 "--outputDirectory",

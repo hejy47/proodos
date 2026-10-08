@@ -1,4 +1,4 @@
-package causalfl.runner;
+package proodos.runner;
 
 import java.io.File;
 import java.io.PrintWriter;
@@ -15,7 +15,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.regex.Pattern;
 
 /**
- * CausalFL test runner CLI. Replaces the GZoltar CLI for test execution and
+ * Proodos test runner CLI. Replaces the GZoltar CLI for test execution and
  * discovery while keeping the same on-disk contracts.
  *
  * <pre>
@@ -62,7 +62,7 @@ public final class TestRunnerMain {
             }
         }
         if (testsFile == null || !Files.isRegularFile(testsFile)) {
-            System.err.println("[causalfl-runner] missing or unreadable --testMethods file: " + testsFile);
+            System.err.println("[proodos-runner] missing or unreadable --testMethods file: " + testsFile);
             return 2;
         }
 
@@ -74,11 +74,11 @@ public final class TestRunnerMain {
             }
         }
         if (specs.isEmpty()) {
-            System.err.println("[causalfl-runner] no test methods parsed from " + testsFile);
+            System.err.println("[proodos-runner] no test methods parsed from " + testsFile);
             return 2;
         }
         if (!TraceBridge.isAgentPresent()) {
-            System.err.println("[causalfl-runner] trace agent not detected; outcomes will only be printed");
+            System.err.println("[proodos-runner] trace agent not detected; outcomes will only be printed");
         }
 
         int executed = 0;
@@ -86,13 +86,13 @@ public final class TestRunnerMain {
             executeOne(spec, perTestTimeoutSeconds);
             executed++;
         }
-        System.out.println("[causalfl-runner] executed " + executed + " test(s)");
+        System.out.println("[proodos-runner] executed " + executed + " test(s)");
         return 0;
     }
 
     private static void executeOne(TestSpec spec, long perTestTimeoutSeconds) {
         final String testId = spec.testId();
-        System.out.println("[causalfl-runner] running " + spec);
+        System.out.println("[proodos-runner] running " + spec);
         long startedAtNanos = System.nanoTime();
 
         final TestSpec currentSpec = spec;
@@ -108,7 +108,7 @@ public final class TestRunnerMain {
                 }
             }
         );
-        Thread worker = new Thread(task, "causalfl-test-" + testId);
+        Thread worker = new Thread(task, "proodos-test-" + testId);
         worker.setDaemon(true);
         worker.start();
 
@@ -125,7 +125,7 @@ public final class TestRunnerMain {
         long runtimeMillis = Math.max((System.nanoTime() - startedAtNanos) / 1000000L, 0L);
         TraceBridge.finishTest(testId, result.failed, result.error, runtimeMillis, result.stackTrace);
         System.out.println(
-            "[causalfl-runner] " + testId + " " + result.outcomeLabel() + " " + (runtimeMillis / 1000.0) + "s"
+            "[proodos-runner] " + testId + " " + result.outcomeLabel() + " " + (runtimeMillis / 1000.0) + "s"
         );
     }
 
@@ -161,7 +161,7 @@ public final class TestRunnerMain {
             }
         }
         if (classesRoot == null || !classesRoot.isDirectory() || outputFile == null) {
-            System.err.println("[causalfl-runner] usage: discoverTests <classesRoot> --outputFile <file> [--includes <globs>]");
+            System.err.println("[proodos-runner] usage: discoverTests <classesRoot> --outputFile <file> [--includes <globs>]");
             return 2;
         }
 
@@ -175,7 +175,7 @@ public final class TestRunnerMain {
             payload.append(line).append('\n');
         }
         Files.write(outputFile, payload.toString().getBytes(StandardCharsets.UTF_8));
-        System.out.println("[causalfl-runner] discovered " + lines.size() + " test method(s)");
+        System.out.println("[proodos-runner] discovered " + lines.size() + " test method(s)");
         return 0;
     }
 
@@ -187,7 +187,7 @@ public final class TestRunnerMain {
 
     private static void printUsage() {
         System.err.println("Usage:");
-        System.err.println("  causalfl.runner.TestRunnerMain runTests --testMethods <file> [--perTestTimeout <seconds>]");
-        System.err.println("  causalfl.runner.TestRunnerMain discoverTests <classesRoot> --outputFile <file> [--includes <globs>]");
+        System.err.println("  proodos.runner.TestRunnerMain runTests --testMethods <file> [--perTestTimeout <seconds>]");
+        System.err.println("  proodos.runner.TestRunnerMain discoverTests <classesRoot> --outputFile <file> [--includes <globs>]");
     }
 }

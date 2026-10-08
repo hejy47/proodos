@@ -9,7 +9,7 @@ from src.utils.cmd_util import run_command
 
 TEST_RUNNER_PROJECT_DIR = PROJECT_ROOT / "test_runner"
 TEST_RUNNER_POM_PATH = TEST_RUNNER_PROJECT_DIR / "pom.xml"
-TEST_RUNNER_JAR_PATH = TEST_RUNNER_PROJECT_DIR / "target" / "causalfl-test-runner.jar"
+TEST_RUNNER_JAR_PATH = TEST_RUNNER_PROJECT_DIR / "target" / "proodos-test-runner.jar"
 
 
 @dataclass(frozen=True)

@@ -1,4 +1,4 @@
-package causalfl.trace;
+package proodos.trace;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -19,7 +19,7 @@ public final class TraceReportMain {
     public static void main(String[] args) throws Exception {
         Arguments arguments = Arguments.parse(args);
         if (arguments.dataFile == null || arguments.outputDirectory == null) {
-            System.err.println("Usage: causalfl.trace.TraceReportMain --dataFile <trace.ser> --outputDirectory <dir>");
+            System.err.println("Usage: proodos.trace.TraceReportMain --dataFile <trace.ser> --outputDirectory <dir>");
             System.exit(2);
         }
 

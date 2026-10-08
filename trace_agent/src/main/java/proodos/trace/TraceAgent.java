@@ -1,4 +1,4 @@
-package causalfl.trace;
+package proodos.trace;
 
 import java.io.File;
 import java.lang.instrument.Instrumentation;
@@ -37,7 +37,7 @@ public final class TraceAgent {
             instrumentation.appendToBootstrapClassLoaderSearch(new JarFile(jarFile));
         } catch (Throwable exc) {
             System.err.println(
-                "CausalFL TraceAgent could not append itself to the bootstrap classpath: "
+                "Proodos TraceAgent could not append itself to the bootstrap classpath: "
                     + exc.getClass().getName()
                     + ": "
                     + exc.getMessage()

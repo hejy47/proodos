@@ -14,14 +14,14 @@ from src.debug.semantic_agent.tools.tool_response import format_tool_result
 def load_case_graph(dataset, test_id: str) -> EvidenceGraph:
     paths = (dataset.metadata.get("fault_context_paths")
              or dataset.metadata.get("evidence_graph_paths", {}))
-    path = (os.environ.get("CAUSALFL_FAULT_CONTEXT_GRAPH")
-            or os.environ.get("CAUSALFL_EVIDENCE_GRAPH")
+    path = (os.environ.get("PROODOS_FAULT_CONTEXT_GRAPH")
+            or os.environ.get("PROODOS_EVIDENCE_GRAPH")
             or paths.get(test_id))
     if path:
         from src.preprocess.context import SourceMethodRecords
         records = dataset.method_records
         graph = (records.graph if isinstance(records, SourceMethodRecords)
-                 and not (os.environ.get("CAUSALFL_EVIDENCE_GRAPH") or os.environ.get("CAUSALFL_FAULT_CONTEXT_GRAPH"))
+                 and not (os.environ.get("PROODOS_EVIDENCE_GRAPH") or os.environ.get("PROODOS_FAULT_CONTEXT_GRAPH"))
                  else EvidenceGraph.load(Path(path)))
         graph_tests = {str(test["test_id"]) for test in graph.metadata.get("test_records", [])}
         if graph.case_id != test_id and test_id not in graph_tests:

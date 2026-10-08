@@ -15,7 +15,7 @@ from src.utils.cmd_util import run_command
 
 
 RUNNER_OUTCOME_RE = re.compile(
-    r"\[causalfl-runner\]\s+(\S+)\s+(PASS|FAIL|ERROR)\s+"
+    r"\[proodos-runner\]\s+(\S+)\s+(PASS|FAIL|ERROR)\s+"
 )
 
 
@@ -363,7 +363,7 @@ def run_single_test_with_runner(
     classpath = _absolutize_classpath(classpath, cwd)
     with tempfile.NamedTemporaryFile(
         "w",
-        prefix="causalfl-java-tests-",
+        prefix="proodos-java-tests-",
         suffix=".txt",
         delete=False,
         encoding="utf-8",

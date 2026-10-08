@@ -50,7 +50,7 @@ def patch_target_method_source(
     if not replacement:
         raise ValueError("replacement_function must contain one complete Java method definition")
     # The wrapper supplies parsing context only; it never appears in the project.
-    wrapper_name = method.method_name if method.is_constructor else "__CausalFLReplacement"
+    wrapper_name = method.method_name if method.is_constructor else "__ProodosReplacement"
     wrapped = (f"class {wrapper_name} {{\n" + replacement + "\n}").encode("utf-8")
     root = _java_parser().parse(wrapped).root_node
     classes = [n for n in root.named_children if n.type not in _COMMENTS]

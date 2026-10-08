@@ -11,9 +11,9 @@ from config import PROJECT_ROOT
 
 JUNIT_JAR = PROJECT_ROOT / "lib" / "junit.jar"
 HAMCREST_CORE_JAR = PROJECT_ROOT / "lib" / "hamcrest-core.jar"
-TEST_RUNNER_JAR = PROJECT_ROOT / "test_runner" / "target" / "causalfl-test-runner.jar"
+TEST_RUNNER_JAR = PROJECT_ROOT / "test_runner" / "target" / "proodos-test-runner.jar"
 RUNNER_REQUIRED_RUNTIME_JARS = (JUNIT_JAR, HAMCREST_CORE_JAR)
-TEST_RUNNER_MAIN_CLASS = "causalfl.runner.TestRunnerMain"
+TEST_RUNNER_MAIN_CLASS = "proodos.runner.TestRunnerMain"
 DEFECTS4J_TIMEZONE = "America/Los_Angeles"
 
 
@@ -70,7 +70,7 @@ def _vul4j_java_home(project_path: Path | None, dataset: str | None) -> Path | N
     except (OSError, ValueError, TypeError, json.JSONDecodeError):
         return None
     if compliance <= 8:
-        # The bundled CausalFL test runner targets Java 8 bytecode; JDK 8 can
+        # The bundled Proodos test runner targets Java 8 bytecode; JDK 8 can
         # execute older Vul4J projects compiled for Java 7.
         return Path("/usr/lib/jvm/java-8-openjdk-amd64")
     if compliance == 11:

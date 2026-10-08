@@ -9,7 +9,7 @@ from src.patching.java.source_override import (
 )
 from src.utils.java_source import JavaMethodDescriptor, _java_parser
 
-OBS_MARKER = "__CAUSALFL_OBS__"
+OBS_MARKER = "__PROODOS_OBS__"
 OBS_VALUE_LIMIT = 200
 OBS_MAX_CALLS_DEFAULT = 20
 
@@ -62,10 +62,10 @@ def insert_observation_prelude(
     if body.named_children and body.named_children[0].type == "explicit_constructor_invocation":
         insertion = body.named_children[0].end_byte
     suffix = hashlib.sha256(source_bytes + str(method.start_byte).encode()).hexdigest()[:12]
-    helper = f"__CausalFLProbe_{suffix}"
-    call_var = f"__causalfl_call_{suffix}"
-    value_var = f"__causalfl_value_{suffix}"
-    error_var = f"__causalfl_error_{suffix}"
+    helper = f"__ProodosProbe_{suffix}"
+    call_var = f"__proodos_call_{suffix}"
+    value_var = f"__proodos_value_{suffix}"
+    error_var = f"__proodos_error_{suffix}"
     lines = ["", f"int {call_var} = {helper}.calls.incrementAndGet();",
              f"if ({call_var} <= {max_calls}) {{"]
     for index, expression in enumerate(expressions):

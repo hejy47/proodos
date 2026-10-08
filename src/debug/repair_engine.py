@@ -30,8 +30,8 @@ class RepairOrchestrator:
         self.preprocess_dir = Path(preprocess_dir)
         self.llm_settings = llm_settings
         self.test_case_id = test_case_id
-        self.max_repairs = max(1, int(os.getenv("CAUSALFL_MAX_REPAIRS", "5")))
-        self.max_patch_attempts = max(1, int(os.getenv("CAUSALFL_MAX_PATCH_ATTEMPTS", "3")))
+        self.max_repairs = max(1, int(os.getenv("PROODOS_MAX_REPAIRS", "5")))
+        self.max_patch_attempts = max(1, int(os.getenv("PROODOS_MAX_PATCH_ATTEMPTS", "3")))
         self.accepted_patches = []
 
     def _failure_text(self, failures) -> str:

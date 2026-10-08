@@ -1,4 +1,4 @@
-package causalfl.trace;
+package proodos.trace;
 
 import java.io.IOException;
 import java.io.ObjectOutputStream;
@@ -178,8 +178,8 @@ public final class TraceRuntime {
     }
 
     public static void log(String message) {
-        if (Boolean.getBoolean("causalfl.trace.debug") && message != null) {
-            System.err.println("[causalfl-trace] " + message);
+        if (Boolean.getBoolean("proodos.trace.debug") && message != null) {
+            System.err.println("[proodos-trace] " + message);
         }
     }
 
@@ -273,7 +273,7 @@ public final class TraceRuntime {
                     output.close();
                 }
             } catch (IOException exc) {
-                System.err.println("[causalfl-trace] failed to write trace data: " + exc.getMessage());
+                System.err.println("[proodos-trace] failed to write trace data: " + exc.getMessage());
             }
         }
     }
@@ -325,7 +325,7 @@ public final class TraceRuntime {
                 public void run() {
                     TraceRuntime.shutdown();
                 }
-            }, "causalfl-trace-shutdown"));
+            }, "proodos-trace-shutdown"));
             shutdownHookRegistered = true;
         }
     }

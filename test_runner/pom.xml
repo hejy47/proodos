@@ -3,10 +3,10 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>causalfl</groupId>
+  <groupId>apr</groupId>
   <artifactId>test-runner</artifactId>
   <version>0.1.0</version>
-  <name>CausalFL Test Runner</name>
+  <name>Proodos Test Runner</name>
   <packaging>jar</packaging>
 
   <properties>
@@ -41,7 +41,7 @@
   </dependencies>
 
   <build>
-    <finalName>causalfl-test-runner</finalName>
+    <finalName>proodos-test-runner</finalName>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -55,7 +55,7 @@
         <configuration>
           <archive>
             <manifestEntries>
-              <Main-Class>causalfl.runner.TestRunnerMain</Main-Class>
+              <Main-Class>proodos.runner.TestRunnerMain</Main-Class>
             </manifestEntries>
           </archive>
         </configuration>

@@ -165,12 +165,12 @@ class JavaProject(Project):
 
     def _resolve_gradle_test_runtime_classpath(self) -> str | None:
         runner = resolve_build_runner(self.project_path, self.build_tool)
-        with tempfile.TemporaryDirectory(prefix="causalfl-gradle-classpath-") as temp_dir:
+        with tempfile.TemporaryDirectory(prefix="proodos-gradle-classpath-") as temp_dir:
             init_script = Path(temp_dir) / "init.gradle"
             init_script.write_text(
                 """
 gradle.projectsEvaluated {
-    gradle.rootProject.tasks.create(name: "causalflPrintTestRuntimeClasspath") {
+    gradle.rootProject.tasks.create(name: "proodosPrintTestRuntimeClasspath") {
         doLast {
             def testProjects = rootProject.allprojects.findAll { candidate ->
                 def sourceSets = candidate.hasProperty("sourceSets") ? candidate.sourceSets : null
@@ -181,7 +181,7 @@ gradle.projectsEvaluated {
             }
             testProjects.each { candidate ->
                 def sourceSets = candidate.sourceSets
-                println "CAUSALFL_TEST_CP=" + sourceSets.getByName("test").runtimeClasspath.asPath
+                println "PROODOS_TEST_CP=" + sourceSets.getByName("test").runtimeClasspath.asPath
             }
         }
     }
@@ -196,14 +196,14 @@ gradle.projectsEvaluated {
                     "--quiet",
                     "-I",
                     str(init_script),
-                    "causalflPrintTestRuntimeClasspath",
+                    "proodosPrintTestRuntimeClasspath",
                 ],
                 cwd=self.project_path,
                 timeout_seconds=300,
             )
         if not result.succeeded:
             return None
-        marker = "CAUSALFL_TEST_CP="
+        marker = "PROODOS_TEST_CP="
         entries: list[str] = []
         seen: set[str] = set()
         for line in result.stdout.splitlines():

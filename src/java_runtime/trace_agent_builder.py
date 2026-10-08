@@ -9,7 +9,7 @@ from src.utils.cmd_util import run_command
 
 TRACE_AGENT_PROJECT_DIR = PROJECT_ROOT / "trace_agent"
 TRACE_AGENT_POM_PATH = TRACE_AGENT_PROJECT_DIR / "pom.xml"
-TRACE_AGENT_JAR_PATH = TRACE_AGENT_PROJECT_DIR / "target" / "causalfl-trace-agent.jar"
+TRACE_AGENT_JAR_PATH = TRACE_AGENT_PROJECT_DIR / "target" / "proodos-trace-agent.jar"
 
 
 @dataclass(frozen=True)

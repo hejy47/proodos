@@ -55,7 +55,7 @@ class DebugPipeline:
             bug_id=args.bug_id,
         )
         result_dir = resolve_output_dir(args.result_dir)
-        os.environ["CAUSALFL_RESULT_DIR"] = str(result_dir)
+        os.environ["PROODOS_RESULT_DIR"] = str(result_dir)
         outputs = CaseOutputPaths.from_project(project_spec, result_dir)
         settings = build_runtime_settings(
             project_path=project_spec.project_path,

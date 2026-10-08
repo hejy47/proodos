@@ -3,10 +3,10 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>causalfl</groupId>
+  <groupId>apr</groupId>
   <artifactId>trace-agent</artifactId>
   <version>0.1.0</version>
-  <name>CausalFL Trace Agent</name>
+  <name>Proodos Trace Agent</name>
   <packaging>jar</packaging>
 
   <properties>
@@ -30,7 +30,7 @@
   </dependencies>
 
   <build>
-    <finalName>causalfl-trace-agent</finalName>
+    <finalName>proodos-trace-agent</finalName>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -52,13 +52,13 @@
               <relocations>
                 <relocation>
                   <pattern>org.objectweb.asm</pattern>
-                  <shadedPattern>causalfl.trace.shaded.asm</shadedPattern>
+                  <shadedPattern>proodos.trace.shaded.asm</shadedPattern>
                 </relocation>
               </relocations>
               <transformers>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                   <manifestEntries>
-                    <Premain-Class>causalfl.trace.TraceAgent</Premain-Class>
+                    <Premain-Class>proodos.trace.TraceAgent</Premain-Class>
                     <Can-Redefine-Classes>false</Can-Redefine-Classes>
                     <Can-Retransform-Classes>false</Can-Retransform-Classes>
                   </manifestEntries>

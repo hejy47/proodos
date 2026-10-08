@@ -49,7 +49,7 @@ def discover_compiled_test_cases(
         raise RuntimeError("No Java test runtime classpath is available for test discovery")
     runner_build = build_test_runner()
     if not runner_build.success:
-        raise RuntimeError("Building the CausalFL test runner failed")
+        raise RuntimeError("Building the Proodos test runner failed")
     missing_jars = missing_test_runner_classpath_jars()
     if missing_jars:
         raise RuntimeError(
@@ -59,7 +59,7 @@ def discover_compiled_test_cases(
     resolved_source_roots = [root.resolve() for root in source_roots or [] if root.exists()]
     test_includes = includes if includes.strip() else "*"
     command_env = runner_command_env(project_path=project_path)
-    with tempfile.TemporaryDirectory(prefix="causalfl-test-discovery-") as temp_dir:
+    with tempfile.TemporaryDirectory(prefix="proodos-test-discovery-") as temp_dir:
         discovered: list[TestCase] = []
         for index, root in enumerate(resolved_artifact_roots):
             output_file = Path(temp_dir) / f"tests-{index}.txt"
@@ -78,7 +78,7 @@ def discover_compiled_test_cases(
             result = run_command(command, cwd=project_path, env=command_env)
             if not result.succeeded:
                 details = result.stderr.strip() or result.stdout.strip() or "test discovery failed"
-                raise RuntimeError(f"Failed to discover Java tests with the CausalFL runner: {details}")
+                raise RuntimeError(f"Failed to discover Java tests with the Proodos runner: {details}")
             if not output_file.exists():
                 raise RuntimeError("Test discovery did not produce an output file")
             discovered.extend(_parse_discovered_tests(output_file, resolved_source_roots))
@@ -124,7 +124,7 @@ def _parse_discovered_tests(output_file: Path, source_roots: list[Path]) -> list
                 file_path=_resolve_source_file(class_name, source_roots),
                 metadata={
                     "framework": framework,
-                    "discovery": "causalfl_runner",
+                    "discovery": "proodos_runner",
                     "discovery_source": "compiled_artifacts",
                 },
             )

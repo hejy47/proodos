@@ -113,7 +113,7 @@ def run_observation(
             "truncated": False,
         }
 
-    with tempfile.TemporaryDirectory(prefix="causalfl-observe-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="proodos-observe-") as tmp:
         tmp_root = Path(tmp)
         override_dir = tmp_root / "classes"
         temp_java = tmp_root / target_file.name
@@ -176,7 +176,7 @@ def parse_observation_output(
     *,
     max_calls: int = OBS_MAX_CALLS_DEFAULT,
 ) -> tuple[list[dict[str, Any]], int, bool]:
-    """Parse ``__CAUSALFL_OBS__`` lines into per-call sample dicts."""
+    """Parse ``__PROODOS_OBS__`` lines into per-call sample dicts."""
     by_call: dict[int, dict[str, Any]] = {}
     for line in (text or "").splitlines():
         match = _OBS_LINE_RE.search(line.strip())

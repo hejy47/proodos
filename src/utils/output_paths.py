@@ -16,7 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 def default_result_dir(repo_root: Path = REPO_ROOT) -> Path:
     """Return the root directory for generated case artifacts."""
     return Path(
-        os.environ.get("CAUSALFL_RESULT_DIR") or repo_root / "output"
+        os.environ.get("PROODOS_RESULT_DIR") or repo_root / "output"
     ).expanduser().resolve()
 
 

@@ -17,7 +17,7 @@ def in_target_container(container: str | None) -> bool:
     """Return whether *container* is the process's current container."""
     if not container:
         return False
-    marker = os.environ.get("CAUSALFL_IN_CONTAINER", "").strip().lower()
+    marker = os.environ.get("PROODOS_IN_CONTAINER", "").strip().lower()
     if marker in {"1", "true", "yes"}:
         return True
     linux_dir = os.environ.get("COHIKER_LINUX_DIR", "").strip()

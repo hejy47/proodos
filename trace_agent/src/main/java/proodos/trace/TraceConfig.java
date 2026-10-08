@@ -1,4 +1,4 @@
-package causalfl.trace;
+package proodos.trace;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -112,7 +112,7 @@ public final class TraceConfig {
             || dottedName.startsWith("sun.")
             || dottedName.startsWith("com.sun.")
             || dottedName.startsWith("org.objectweb.asm.")
-            || dottedName.startsWith("causalfl.trace.")) {
+            || dottedName.startsWith("proodos.trace.")) {
             return false;
         }
         if (isProbableTestClass(dottedName)) {

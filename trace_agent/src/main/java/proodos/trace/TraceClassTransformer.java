@@ -1,4 +1,4 @@
-package causalfl.trace;
+package proodos.trace;
 
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.IllegalClassFormatException;
@@ -15,7 +15,7 @@ import org.objectweb.asm.commons.AdviceAdapter;
 
 /** Instruments application methods for enter/exit probes. Test lifecycle is owned by test_runner. */
 public final class TraceClassTransformer implements ClassFileTransformer {
-    private static final String RUNTIME = "causalfl/trace/TraceRuntime";
+    private static final String RUNTIME = "proodos/trace/TraceRuntime";
 
     private final TraceConfig config;
 
@@ -109,7 +109,7 @@ public final class TraceClassTransformer implements ClassFileTransformer {
             };
             reader.accept(visitor, ClassReader.EXPAND_FRAMES);
             byte[] transformedBytes = writer.toByteArray();
-            if (Boolean.getBoolean("causalfl.trace.debug")) {
+            if (Boolean.getBoolean("proodos.trace.debug")) {
                 TraceRuntime.log("instrumented application class " + className + " with " + probedMethods[0] + " methods");
             }
             dumpTransformedClass(className, transformedBytes);
@@ -128,7 +128,7 @@ public final class TraceClassTransformer implements ClassFileTransformer {
     }
 
     private static void dumpTransformedClass(String className, byte[] transformedBytes) {
-        String dumpDir = System.getProperty("causalfl.trace.dumpDir", "").trim();
+        String dumpDir = System.getProperty("proodos.trace.dumpDir", "").trim();
         if (dumpDir.isEmpty()) {
             return;
         }

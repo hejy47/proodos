@@ -20,7 +20,7 @@ _SKIP_FRAME_PREFIXES = (
     "org.hamcrest.",
     "org.testng.",
     "com.sun.",
-    "causalfl.runner.",
+    "proodos.runner.",
     "org.apache.maven.",
     "org.apache.tools.ant.",
 )

@@ -1,4 +1,4 @@
-package causalfl.runner;
+package proodos.runner;
 
 /** Outcome of one executed test method. */
 final class TestExecutionResult {

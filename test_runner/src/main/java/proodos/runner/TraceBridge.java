@@ -1,9 +1,9 @@
-package causalfl.runner;
+package proodos.runner;
 
 import java.lang.reflect.Method;
 
 /**
- * Reflective bridge to {@code causalfl.trace.TraceRuntime}.
+ * Reflective bridge to {@code proodos.trace.TraceRuntime}.
  *
  * <p>When the trace agent is attached it appends itself to the bootstrap class
  * loader, so the class resolves from anywhere. When the runner is used without
@@ -39,7 +39,7 @@ final class TraceBridge {
 
     private static Method lookup(String name, Class<?>... parameterTypes) {
         try {
-            Class<?> runtime = Class.forName("causalfl.trace.TraceRuntime");
+            Class<?> runtime = Class.forName("proodos.trace.TraceRuntime");
             Method method = runtime.getMethod(name, parameterTypes);
             method.setAccessible(true);
             return method;
@@ -55,7 +55,7 @@ final class TraceBridge {
         try {
             method.invoke(null, args);
         } catch (Throwable exc) {
-            System.err.println("[causalfl-runner] trace bridge call failed: " + exc);
+            System.err.println("[proodos-runner] trace bridge call failed: " + exc);
         }
     }
 }

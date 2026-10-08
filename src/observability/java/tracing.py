@@ -59,7 +59,7 @@ def collect_java_trace(
         )
         class_prefixes = list(dict.fromkeys(method_id.split("#", 1)[0] for method_id in requested))
 
-        with tempfile.TemporaryDirectory(prefix="causalfl-java-trace-") as temp_dir:
+        with tempfile.TemporaryDirectory(prefix="proodos-java-trace-") as temp_dir:
             stage_dir = Path(temp_dir)
             trace_runner = JavaTraceCollector(project)
             spectra_path = stage_dir / "spectra.csv"

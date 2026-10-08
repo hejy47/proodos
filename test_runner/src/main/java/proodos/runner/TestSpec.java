@@ -1,4 +1,4 @@
-package causalfl.runner;
+package proodos.runner;
 
 /** One test method parsed from a {@code FRAMEWORK,Class#method} line. */
 final class TestSpec {

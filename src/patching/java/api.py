@@ -69,7 +69,7 @@ def run_intervention(
             max(0, target_descriptor.start_byte - 200) : target_descriptor.end_byte + 800
         ]
         # Temporary classes take precedence without changing production or test sources.
-        with tempfile.TemporaryDirectory(prefix="causalfl-intervention-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="proodos-intervention-") as tmp:
             tmp_root = Path(tmp)
             temp_java = tmp_root / target_file.name
             temp_java.write_bytes(patched_source.encode("utf-8"))
