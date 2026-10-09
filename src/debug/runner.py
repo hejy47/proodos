@@ -49,6 +49,10 @@ class DebugStageRunner:
 
     def run(self) -> DebugRunSummary:
         started_at = time.perf_counter()
+        print(
+            f"Debug {self.project.spec.dataset} {self.project.spec.project_id}-{self.project.spec.bug_id}...",
+            flush=True,
+        )
         debug_dir = self.paths.output_dir
         outputs = CaseOutputPaths.from_project(self.project.spec, self.result_dir)
         patch_path = outputs.patch_path
@@ -88,8 +92,10 @@ class DebugStageRunner:
         )
 
         patch_text = str(repair_result.get("final_diff") or "")
-        patch_path.write_text(patch_text, encoding="utf-8")
-        if patch_path.read_text(encoding="utf-8") != patch_text:
+        # Diff hunks preserve source newlines, including CRLF context lines.
+        patch_bytes = patch_text.encode("utf-8")
+        patch_path.write_bytes(patch_bytes)
+        if patch_path.read_bytes() != patch_bytes:
             raise ValueError(f"Repair patch at {patch_path} could not be verified")
 
         status = (
@@ -99,6 +105,7 @@ class DebugStageRunner:
         )
         if status == PipelineStageStatus.SUCCESS:
             (debug_dir / "repair_complete").touch()
+            print("Debug finished", flush=True)
         return DebugRunSummary(
             project=str(self.project.spec),
             debug_dir=debug_dir,

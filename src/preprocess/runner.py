@@ -37,26 +37,33 @@ class PreprocessStageRunner:
         project: Project,
         project_spec: ProjectSpec,
         paths: PathSettings,
-        test_case_id: str | None = None,
     ):
         self.project = project
         self.project_spec = project_spec
         self.paths = paths
-        self.test_case_id = test_case_id
 
     def run(self) -> PreprocessRunSummary:
         output_dir = self.paths.output_dir
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        print(f"Preprocess {self.project_spec.dataset} {self.project_spec.project_id}-{self.project_spec.bug_id}...")
+        print(
+            f"Preprocess {self.project_spec.dataset} {self.project_spec.project_id}-{self.project_spec.bug_id}...",
+            flush=True,
+        )
 
         # Kernel cases are represented by a static fault-context graph. Runtime
         # instrumentation belongs to debug-time tools and must not create
         # an instrumentation directory during preprocessing.
         if is_kernel_dataset(self.project_spec.dataset):
-            return self._run_kernel_static_graph()
+            result = self._run_kernel_static_graph()
+        else:
+            result = self._run_java_static_graph()
 
-        return self._run_java_static_graph()
+        if result.status == PipelineStageStatus.SUCCESS:
+            print("Preprocess finished", flush=True)
+        else:
+            print(f"Preprocess failed: {result.message}", flush=True)
+        return result
 
     def _run_java_static_graph(self) -> PreprocessRunSummary:
         from src.fault_graph.java_evidence import build_java_evidence
@@ -64,8 +71,7 @@ class PreprocessStageRunner:
         output_dir = self.paths.output_dir
         case_id = self.project_spec.bug_id or self.project_spec.project_id or self.project.project_path.name
         try:
-            graph = build_java_evidence(project=self.project, case_id=case_id,
-                                        test_case_id=self.test_case_id)
+            graph = build_java_evidence(project=self.project, case_id=case_id)
             # Replace old preprocessing artifacts only after input/index validation.
             if output_dir.exists():
                 shutil.rmtree(output_dir)
@@ -75,7 +81,7 @@ class PreprocessStageRunner:
             summary = dict(
                 case_id=case_id, language="java", entities=len(graph.entities),
                 relations=len(graph.relations), functions=len(graph.aliases),
-                tests=len(graph.metadata["test_records"]),
+                tests=sum(entity["entity_type"] == "test_method" for entity in graph.entities.values()),
                 source_files=graph.metadata["source_file_count"], graph_path=str(graph_path),
                 collection_strategy="static_fault_context",
                 instrumentation=False, coverage_imported=False, test_execution=False,

@@ -109,7 +109,7 @@ class RepairOrchestrator:
         if not has_repair_index(graph_path):
             result = PreprocessStageRunner(
                 project=self.project, project_spec=self.project_spec,
-                paths=preprocess_paths, test_case_id=test_id,
+                paths=preprocess_paths,
             ).run()
             if result.status.value != "success":
                 raise RuntimeError(result.message)

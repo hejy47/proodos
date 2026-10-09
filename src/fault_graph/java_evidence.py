@@ -1,22 +1,18 @@
-"""Static Java source and PoV context; no compilation, test execution, or coverage.
+"""Static Java source index; no failure reports, test execution, or coverage.
 
 Java preprocessing indexes declarations and static call candidates. Resource
 relationships and lifecycle analysis are outside its current scope.
 """
 from __future__ import annotations
 
-from collections import defaultdict
 import hashlib
-import json
 import os
 from pathlib import Path
 import re
 
 from src.fault_graph.evidence_graph import EvidenceGraph
-from src.fault_graph.method_id_map import resolve_crash_method_id
 from src.fault_graph.static_call_graph import _MethodIndex, _extract_call_sites
 from src.utils.java_source import CLASS_LIKE_TYPES, METHOD_TYPES, _java_parser, _extract_package_name, parse_java_methods
-from src.utils.java_util import parse_defects4j_failing_tests, parse_junit_xml_file, split_test_id
 
 _EXCLUDED_DIRS = {".git", ".gradle", ".idea", ".mvn", "target", "out", "node_modules", "VUL4J"}
 _PRIMITIVES = dict(byte="B", char="C", double="D", float="F", int="I", long="J", short="S", boolean="Z", void="V")
@@ -268,108 +264,17 @@ def index_java_source(graph: EvidenceGraph, project_root: Path, test_roots=(), *
     return tests_by_name, production_methods
 
 
-def _failure_inputs(root: Path, selected_test: str | None):
-    """Read only failure/test-selector fields, never patch or fixing-commit data."""
-    failures = {}
-    result_path = root / "VUL4J/testing_results.json"
-    if result_path.is_file():
-        payload = json.loads(result_path.read_text(encoding="utf-8"))
-        for failure in payload.get("tests", {}).get("failures", []):
-            test_id = f"{failure['test_class']}::{failure['test_method']}"
-            failures[test_id] = dict(
-                report="\n".join(str(failure.get(key) or "") for key in ("failure_name", "detail")).strip(),
-                artifact=str(result_path.relative_to(root)), observed_failure=True,
-            )
-    for report_path in sorted(root.rglob("TEST-*.xml")):
-        if "VUL4J" in report_path.relative_to(root).parts:
-            continue
-        if not any(part in {"surefire-reports", "failsafe-reports", "test-results"} for part in report_path.parts):
-            continue
-        for case in parse_junit_xml_file(report_path).failing_tests:
-            failures[case.test_id] = dict(report=case.stack_trace or case.failure_message,
-                                         artifact=str(report_path.relative_to(root)), observed_failure=True)
-    # Defects4J and Defects4J-Trans write this report during `defects4j test`.
-    # Import the existing report without executing tests during preprocessing.
-    defects4j_report = root / "failing_tests"
-    if defects4j_report.is_file():
-        for case in parse_defects4j_failing_tests(root):
-            test_id = f"{case.class_name}::{case.method_name}"
-            failures[test_id] = dict(
-                report=case.stack_trace or case.failure_message,
-                artifact=defects4j_report.name, observed_failure=True,
-            )
-    info_path = root / "VUL4J/vulnerability_info.json"
-    if info_path.is_file():
-        payload = json.loads(info_path.read_text(encoding="utf-8"))
-        declared = set()
-        for test_id in payload.get("failing_tests", []):
-            class_name, method_name = split_test_id(str(test_id))
-            declared.add(f"{class_name}::{method_name}")
-            failures.setdefault(f"{class_name}::{method_name}", dict(
-                report="Dataset-declared PoV test; no failure report was supplied for this test.",
-                artifact=str(info_path.relative_to(root)), observed_failure=False))
-        if declared:
-            failures = {test_id: failure for test_id, failure in failures.items() if test_id in declared}
-    if selected_test:
-        cls, method = split_test_id(selected_test)
-        if not cls or method == "*" or not method:
-            raise ValueError("--test_case_id must select a single Java test method")
-        test_id = f"{cls}::{method}"
-        return {test_id: failures.get(test_id, dict(
-            report="Explicitly selected test; no failure report was supplied.",
-            artifact="--test_case_id", observed_failure=False))}
-    return failures
-
-
-def build_java_evidence(*, project, case_id: str, test_case_id: str | None = None,
-                        failing_tests=None) -> EvidenceGraph:
+def build_java_evidence(*, project, case_id: str) -> EvidenceGraph:
+    """Index project sources; debug adds failure context from its regression."""
     root = project.project_path.resolve()
     if not root.is_dir():
         raise ValueError(f"Java project root does not exist: {root}")
     graph = EvidenceGraph(case_id, metadata=dict(
         language="java", dataset=project.spec.dataset, source_root=str(root),
         collection_strategy="static_fault_context", instrumentation=False, coverage_imported=False,
+        test_records=[], crash_points={},
     ))
-    tests_by_name, methods = index_java_source(graph, root, project.discover_test_roots())
+    _, methods = index_java_source(graph, root, project.discover_test_roots())
     if not methods:
         raise ValueError("No Java methods with source bodies were found")
-    # Repair rounds use the latest regression result, never stale reports left
-    # behind by a single-test validation or an earlier project version.
-    failures = (_failure_inputs(root, test_case_id) if failing_tests is None else {
-        test.test_id: dict(report=test.stack_trace or test.failure_message,
-                           artifact="current_regression", observed_failure=True)
-        for test in failing_tests
-    })
-    if not failures:
-        raise ValueError(
-            "No PoV/failing test inputs found; provide existing JUnit/VUL4J reports, "
-            "Defects4J failing_tests, or --test_case_id"
-        )
-    records, crash_points = [], {}
-    for test_id, failure in failures.items():
-        class_name, method_name = split_test_id(test_id)
-        source_id = tests_by_name.get(test_id)
-        source_entity = graph.entities.get(source_id, {})
-        location = source_entity.get("content", {}).get("location", {})
-        records.append(dict(
-            test_id=test_id, class_name=class_name, method_name=method_name,
-            source_entity_id=source_id, file_path=location.get("file"),
-            success=False if failure["observed_failure"] else None,
-            metadata=dict(outcome_source="existing_failure_report" if failure["observed_failure"] else "test_selector"),
-        ))
-        report_id = "report:" + test_id
-        graph.add_entity(report_id, "crash_report", name=f"failure report: {test_id}",
-                         content=dict(text=failure["report"]),
-                         provenance=dict(source=failure["artifact"], extractor="failure_report_import"))
-        if source_id:
-            graph.add_relation(report_id, "failure_of", source_id, dict(source=failure["artifact"]))
-        else:
-            graph.metadata.setdefault("diagnostics", []).append(dict(kind="test_source_unresolved", test_id=test_id))
-        crash = resolve_crash_method_id(failure["report"], list(methods), source_methods_by_spectra=methods)
-        if crash:
-            crash_points[test_id] = crash
-            graph.add_relation(report_id, "reports_frame", graph.aliases[crash],
-                               dict(source=failure["artifact"], extractor="java_stack_frame",
-                                    interpretation="Reported stack frame; not a root-cause label."))
-    graph.metadata.update(test_records=records, crash_points=crash_points)
     return graph

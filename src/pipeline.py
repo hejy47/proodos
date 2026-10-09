@@ -93,7 +93,10 @@ class DebugPipeline:
                     )
                 )
                 continue
-            stage_results.append(runner())
+            result = runner()
+            stage_results.append(result)
+            if result.status == PipelineStageStatus.FAILED:
+                break
 
         return PipelineRunSummary(
             project=self.context.project_spec,
@@ -109,7 +112,6 @@ class DebugPipeline:
             project=self.project,
             project_spec=self.context.project_spec,
             paths=paths,
-            test_case_id=self.context.test_case_id,
         ).run()
         return self._stage_result(
             "preprocess",
