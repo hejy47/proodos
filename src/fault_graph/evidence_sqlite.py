@@ -116,7 +116,7 @@ def save_sqlite(graph: EvidenceGraph, path: Path) -> None:
                 CREATE TABLE metadata (payload TEXT NOT NULL);
                 CREATE TABLE source_files (
                     file_id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE,
-                    sha256 TEXT NOT NULL);
+                    sha256 TEXT NOT NULL, encoding TEXT NOT NULL DEFAULT 'utf-8');
                 CREATE TABLE entities (
                     node_id INTEGER PRIMARY KEY, public_id TEXT NOT NULL UNIQUE,
                     kind TEXT NOT NULL, name TEXT NOT NULL, method_id TEXT,
@@ -161,8 +161,9 @@ def save_sqlite(graph: EvidenceGraph, path: Path) -> None:
                             if expected and digest != expected:
                                 raise ValueError(f"Source changed since indexing: {file_name}")
                             source_ids[file_name] = len(source_ids) + 1
-                            db.execute("INSERT INTO source_files VALUES (?, ?, ?)",
-                                       (source_ids[file_name], file_name, digest))
+                            db.execute("INSERT INTO source_files VALUES (?, ?, ?, ?)",
+                                       (source_ids[file_name], file_name, digest,
+                                        graph.metadata.get("source_encodings", {}).get(file_name, "utf-8")))
                         file_id = source_ids[file_name]
                     yield (node_id, eid, entity["entity_type"], str(entity.get("name", "")),
                            content.get("method_id"), content.get("operation_kind"),
@@ -182,6 +183,17 @@ def save_sqlite(graph: EvidenceGraph, path: Path) -> None:
                 CREATE INDEX relation_target ON relations(target_node, kind);
             """)
             build_search_index(db, graph._documents, node_ids)
+            if hasattr(graph, "repair_index"):
+                from src.fault_graph.java_repair_index import write_repair_tables
+                write_repair_tables(db, graph.repair_index)
+                for file_name, digest in graph.metadata.get("source_sha256", {}).items():
+                    db.execute("INSERT OR IGNORE INTO source_files(path,sha256,encoding) VALUES (?,?,?)",
+                               (file_name, digest, graph.metadata.get("source_encodings", {}).get(file_name, "utf-8")))
+                # Metadata documents make exact FTS deletion possible on file refresh.
+                # Java documents contain declarations/spans, never full method source.
+                db.execute("CREATE TABLE entity_documents (node_id INTEGER PRIMARY KEY, document TEXT NOT NULL)")
+                db.executemany("INSERT INTO entity_documents VALUES (?,?)",
+                               ((node_ids[eid], doc) for eid, doc in graph._documents.items()))
         temporary.replace(path)
     finally:
         temporary.unlink(missing_ok=True)

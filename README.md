@@ -61,4 +61,29 @@ For the command above, the accepted patch is written to:
 
 The patch uses standard `--- a/...` and `+++ b/...` unified-diff format. Logs, preprocessing data, repair history, and token usage are stored under the same `result_dir`.
 
+Optional repair budgets can be set through environment variables:
+
+```dotenv
+PROODOS_MAX_PATCH_ATTEMPTS=5
+PROODOS_MAX_DIAGNOSIS_ROUNDS=3
+PROODOS_MAX_REVIEW_ATTEMPTS=2
+PROODOS_MAX_REPAIR_ROUNDS=5
+PROODOS_TIME_BUDGET_SECONDS=3600
+```
+
+The patch agent can query Java repair ingredients on demand: `list_accessible_variables`
+returns variables and scopes, `list_callable_methods` returns project method signatures
+and comments, and `read_code` reads indexed source. These tools use the preprocessing
+SQLite index and return Markdown. JDK and third-party methods are outside the index.
+After a patch is accepted, only its changed Java file is reindexed before repair continues.
+
+After fault localization, code automatically assembles repair context from the existing
+index and failure report, with no LLM calls or preprocessing changes. It has three sections:
+`Test Code` (the complete selected test with its failure location marked),
+`Test Failure Message` (the original failure report), and `Dependency Chain`
+(call candidates and related source, including assertions inside test helpers).
+Failure reports and supplementary source are bounded; the selected test is kept complete.
+The patch agent uses this context to derive expected behavior before generating a patch
+and records a concise evidence summary in its existing log.
+
 Use `python main.py --help` to see all options.

@@ -98,7 +98,7 @@ class TestCase:
 @dataclass(frozen=True)
 class TestRunResult:
     success: bool
-    passed: int
+    passed: int | None  # None means the runner does not report a passing-test count.
     failed: int
     errors: int
     failing_tests: list[TestCase] = field(default_factory=list)

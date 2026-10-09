@@ -16,9 +16,6 @@ dependencies = [
 [tool.uv]
 add-bounds = "exact"
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-
 [dependency-groups]
 dev = [
     "pytest==9.1.1",

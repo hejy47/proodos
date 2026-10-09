@@ -15,6 +15,7 @@ class PreprocessContext:
     method_ids: tuple[str, ...]
     method_records: Sequence[dict[str, object]]
     metadata: dict[str, object]
+    graph: object | None = None
 
 
 class SourceMethodRecords(Sequence):
@@ -98,6 +99,7 @@ def load_preprocess_context(path: Path) -> PreprocessContext:
     return PreprocessContext(
         test_ids=test_ids, test_records=tuple(tests), method_ids=method_ids,
         method_records=SourceMethodRecords(graph, method_ids),
+        graph=graph,
         metadata=dict(graph.metadata, language=language, case_id=graph.case_id,
                       fault_context_paths={test_id: str(path.resolve()) for test_id in test_ids}),
     )

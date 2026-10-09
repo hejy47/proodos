@@ -51,7 +51,7 @@ class Defects4JProject(Project):
         failing_tests = parse_defects4j_failing_tests(self.project_path, result.stdout, result.stderr)
         return TestRunResult(
             success=result.succeeded and not failing_tests,
-            passed=0,
+            passed=None,
             failed=len(failing_tests),
             errors=0 if result.return_code in (0, 1) else 1,
             failing_tests=failing_tests,
@@ -69,7 +69,7 @@ class Defects4JProject(Project):
         failing_tests = parse_defects4j_failing_tests(self.project_path, result.stdout, result.stderr)
         return TestRunResult(
             success=result.succeeded and not failing_tests,
-            passed=0,
+            passed=None,
             failed=len(failing_tests),
             errors=0 if result.return_code in (0, 1) else 1,
             failing_tests=failing_tests,

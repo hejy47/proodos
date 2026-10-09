@@ -137,13 +137,14 @@ def _method_id(method, node, data, imports, wildcard_imports, known_types):
     return f"{method.qualified_class_name}#{name}({''.join(args)}){ret}"
 
 
-def index_java_source(graph: EvidenceGraph, project_root: Path, test_roots=()):
+def index_java_source(graph: EvidenceGraph, project_root: Path, test_roots=(), *,
+                      files=None, external_methods=(), known_types=()):
     root = project_root.resolve()
     units = []
-    known_types = set()
+    known_types = set(known_types)
     tests_by_name = {}
     all_methods = []
-    for path in _java_files(root):
+    for path in _java_files(root) if files is None else files:
         data = path.read_bytes()
         tree = _java_parser().parse(data)
         methods = parse_java_methods(path)
@@ -244,12 +245,20 @@ def index_java_source(graph: EvidenceGraph, project_root: Path, test_roots=()):
                     if owner is not None and owner.start_byte == node.start_byte:
                         graph.add_relation(eid, "declares", method_entities[(path, method.start_byte)],
                                            dict(extractor="tree_sitter_java", source=rel))
-    index = _MethodIndex(all_methods)
+    from src.fault_graph.java_repair_index import build_repair_index
+    graph.repair_index = build_repair_index(units, method_entities, known_types)
+    graph.metadata["repair_ingredients_version"] = 1
+    external = {method: eid for method, eid in external_methods}
+    index = _MethodIndex(all_methods + list(external))
     for caller in all_methods:
         caller_eid = method_entities[(caller.file_path, caller.start_byte)]
         for site in _extract_call_sites(caller):
             for callee in index.resolve(site, enclosing=caller):
-                target = method_entities[(callee.file_path, callee.start_byte)]
+                target = method_entities.get((callee.file_path, callee.start_byte)) or external[callee]
+                if target not in graph.entities:
+                    # A file refresh references existing nodes without rewriting them.
+                    graph.add_entity(target, "source_reference", name=callee.method_name,
+                                     content={}, provenance={}, reference_only=True)
                 graph.add_relation(caller_eid, "calls_candidate", target,
                                    dict(extractor="tree_sitter_java", source=str(caller.file_path.relative_to(root)),
                                         resolution="lexical_receiver_and_name_arity_candidates",

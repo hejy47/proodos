@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import asdict
 import difflib
 from pathlib import Path
+from typing import Mapping
 
 from src.patching.java.bridge import (
     apply_intervention, parse_method_id, parse_test_id, parse_jvm_parameter_types,
@@ -19,6 +20,56 @@ def source_diff(before: str, after: str, relative_path: str) -> str:
         before.splitlines(keepends=True), after.splitlines(keepends=True),
         fromfile=f"a/{relative_path}", tofile=f"b/{relative_path}",
     ))
+
+
+def snapshot_production_sources(project) -> dict[str, bytes]:
+    """Capture production source bytes for the case-level final diff."""
+    root = project.project_path.resolve()
+    snapshot: dict[str, bytes] = {}
+    for source_root in project.discover_source_roots():
+        source_root = source_root.resolve()
+        if not source_root.is_dir() or not source_root.is_relative_to(root):
+            continue
+        for path in source_root.rglob("*"):
+            if path.is_file() and not any(part in {"build", "target", ".gradle"} for part in path.parts):
+                snapshot[path.relative_to(root).as_posix()] = path.read_bytes()
+    return snapshot
+
+
+def snapshot_diff(before: Mapping[str, bytes], project, accepted_files: set[str] | None = None) -> str:
+    """Build one unified diff from a case baseline to the accepted checkout."""
+    root = project.project_path.resolve()
+    current: dict[str, bytes] = {}
+    paths = set(before)
+    if accepted_files is not None:
+        paths = set(accepted_files)
+    for relative in paths:
+        path = root / relative
+        if path.is_file():
+            current[relative] = path.read_bytes()
+    chunks: list[str] = []
+    for relative in sorted(paths):
+        old = before.get(relative, b"").decode("utf-8", errors="replace")
+        new = current.get(relative, b"").decode("utf-8", errors="replace")
+        if old != new:
+            chunks.append(source_diff(old, new, relative))
+    return "".join(chunks)
+
+
+def rollback_validated_patch(project, validation: Mapping[str, object]) -> None:
+    """Restore a selected-test-passing candidate rejected by patch review."""
+    relative = str(validation.get("file_path") or "")
+    original = validation.get("source_before")
+    if not relative or not isinstance(original, str):
+        raise ValueError("Validated patch does not contain a rollback source")
+    target = (project.project_path / relative).resolve()
+    root = project.project_path.resolve()
+    if not target.is_relative_to(root):
+        raise ValueError("Rollback target is outside the project")
+    target.write_bytes(original.encode("utf-8"))
+    compilation = project.compile()
+    if not compilation.success:
+        raise RuntimeError("Candidate rollback failed to compile")
 
 
 def validate_patch(*, project, test_id: str, method_id: str,

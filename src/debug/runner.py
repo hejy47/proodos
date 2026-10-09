@@ -10,6 +10,7 @@ import time
 from config import LLMSettings, PathSettings
 from src.debug.repair_engine import RepairOrchestrator
 from src.models import PipelineStageStatus
+from src.patching.java.patch_validation import snapshot_production_sources
 from src.project import Project
 from src.utils import json_utils, llm_util
 from src.utils.output_paths import CaseOutputPaths
@@ -36,6 +37,7 @@ class DebugStageRunner:
         preprocess_dir: Path,
         result_dir: Path,
         test_case_id: str | None = None,
+        started_at: float | None = None,
     ):
         self.project = project
         self.paths = paths
@@ -43,6 +45,7 @@ class DebugStageRunner:
         self.preprocess_dir = Path(preprocess_dir)
         self.result_dir = Path(result_dir)
         self.test_case_id = test_case_id
+        self.started_at = started_at
 
     def run(self) -> DebugRunSummary:
         started_at = time.perf_counter()
@@ -63,6 +66,8 @@ class DebugStageRunner:
             preprocess_dir=self.preprocess_dir,
             llm_settings=self.llm_settings,
             test_case_id=self.test_case_id,
+            baseline_sources=snapshot_production_sources(self.project),
+            budget_started_at=self.started_at,
         )
         with llm_util.collect_usage() as usage:
             repair_result = repair_engine.run()
@@ -82,11 +87,7 @@ class DebugStageRunner:
             encoding="utf-8",
         )
 
-        patch_text = "".join(
-            str(item.get("diff") or "").rstrip("\n") + "\n"
-            for item in repair_result.get("accepted_patches", [])
-            if str(item.get("diff") or "").strip()
-        )
+        patch_text = str(repair_result.get("final_diff") or "")
         patch_path.write_text(patch_text, encoding="utf-8")
         if patch_path.read_text(encoding="utf-8") != patch_text:
             raise ValueError(f"Repair patch at {patch_path} could not be verified")

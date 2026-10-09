@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -72,6 +73,7 @@ class DebugPipeline:
         )
 
     def run(self, stage: str = "all") -> PipelineRunSummary:
+        self._run_started_at = time.monotonic()
         selected_stage = stage.lower()
         stage_names = STAGE_ORDER if selected_stage == "all" else (selected_stage,)
         stage_runners = {
@@ -128,6 +130,7 @@ class DebugPipeline:
             preprocess_dir=preprocess_paths.output_dir,
             result_dir=self.context.result_dir,
             test_case_id=self.context.test_case_id,
+            started_at=getattr(self, "_run_started_at", None),
         ).run()
         return self._stage_result(
             "debug",

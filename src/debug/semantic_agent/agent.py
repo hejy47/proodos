@@ -14,7 +14,7 @@ from src.utils import llm_util
 from src.utils.agent_logging import append_log, log_completion
 
 
-MAX_FINAL_ATTEMPTS = 2
+MAX_FINAL_ATTEMPTS = 3
 
 
 def parse_json_response(content: str | None) -> object:
