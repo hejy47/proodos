@@ -285,12 +285,27 @@ def build_java_evidence(*, project, case_id: str) -> EvidenceGraph:
     root = project.project_path.resolve()
     if not root.is_dir():
         raise ValueError(f"Java project root does not exist: {root}")
+    test_roots = project.discover_test_roots()
+    source_roots = tuple(dict.fromkeys(
+        path.resolve() for path in (*project.discover_source_roots(), *test_roots)
+        if path.is_dir() and path.resolve().is_relative_to(root)
+    ))
+    # A checkout can contain experiments or archived copies with the same Java
+    # type names as compiled sources. Use the adapter's source roots so those
+    # copies cannot conflict with repair records or affect call resolution.
+    files = (path for path in _java_files(root)
+             if any(path.is_relative_to(source) for source in source_roots)) if source_roots else None
     graph = EvidenceGraph(case_id, metadata=dict(
         language="java", dataset=project.spec.dataset, source_root=str(root),
         collection_strategy="static_fault_context", instrumentation=False, coverage_imported=False,
         test_records=[], crash_points={},
     ))
-    _, methods = index_java_source(graph, root, project.discover_test_roots())
+    _, methods = index_java_source(graph, root, test_roots, files=files)
+    if source_roots:
+        graph.metadata.update(
+            source_scope="project_source_and_test_roots",
+            indexed_source_roots=[path.relative_to(root).as_posix() for path in source_roots],
+        )
     if not methods:
         raise ValueError("No Java methods with source bodies were found")
     return graph
