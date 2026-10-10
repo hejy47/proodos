@@ -9,6 +9,7 @@ import sqlite3
 from src.fault_graph.evidence_graph import EvidenceGraph
 from src.fault_graph.evidence_sqlite import _compact_entity, _compact_relation
 from src.fault_graph.java_evidence import index_java_source
+from src.fault_graph.java_call_resolver import read_call_symbols, symbol_descriptors, write_call_symbols
 from src.fault_graph.java_repair_index import write_repair_tables
 from src.fault_graph.method_id_map import resolve_crash_method_id
 from src.utils.java_source import JavaMethodDescriptor
@@ -19,7 +20,7 @@ def has_repair_index(path):
     if not Path(path).is_file():
         return False
     with closing(sqlite3.connect(path)) as db:
-        return db.execute("SELECT 1 FROM sqlite_master WHERE name='repair_methods'").fetchone() is not None
+        return db.execute("SELECT count(*) FROM sqlite_master WHERE name IN ('repair_methods','java_call_symbols')").fetchone()[0] == 2
 
 
 def _catalog(db, excluded_files=()):
@@ -94,9 +95,11 @@ def refresh_java_files(path, project, changed_files):
     with closing(sqlite3.connect(path)) as db, db:
         payload = json.loads(db.execute("SELECT payload FROM metadata").fetchone()[0])
         metadata = payload["metadata"]
-        known = [r[0] for r in db.execute("SELECT type_id FROM repair_types")]
+        symbols = read_call_symbols(db, excluded_files=files)
+        known = [r["type_id"] for r in symbols["types"]]
         graph = EvidenceGraph(payload["case_id"], metadata=dict(source_root=str(root), language="java"))
-        index_java_source(graph, root, test_roots, files=resolved, external_methods=_catalog(db, files), known_types=known)
+        index_java_source(graph, root, test_roots, files=resolved, external_methods=symbol_descriptors(symbols),
+                          external_symbols=symbols, known_types=known)
         if any(r["status"] != "ok" for r in graph.repair_index["files"]):
             raise ValueError("Accepted source could not be parsed; the previous SQLite index was retained")
         previous = []
@@ -109,6 +112,7 @@ def refresh_java_files(path, project, changed_files):
                        (graph.metadata["source_sha256"][file], graph.metadata["source_encodings"][file], file))
         _replace_fragment(db, graph, previous)
         write_repair_tables(db, graph.repair_index, changed_files=files)
+        write_call_symbols(db, graph.call_index, changed_files=files)
         metadata.setdefault("source_sha256", {}).update(graph.metadata["source_sha256"])
         metadata.setdefault("source_encodings", {}).update(graph.metadata["source_encodings"])
         metadata["source_root"] = str(root)

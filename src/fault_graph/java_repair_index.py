@@ -96,11 +96,7 @@ def resolve_type(value, context, known_types):
         return name
     if name in normalized:
         return normalized[name]
-    first, _, rest = name.partition(".")
-    if first in context["imports"]:
-        imported = context["imports"][first] + ("." + rest if rest else "")
-        return normalized.get(imported)
-    # Lexical nested types, enclosing types and then the current package.
+    # Lexical member types shadow compilation-unit imports.
     enclosing = context["owner_type"]
     while enclosing:
         candidate = enclosing + "$" + name.replace(".", "$")
@@ -109,6 +105,10 @@ def resolve_type(value, context, known_types):
         if enclosing.rsplit(".", 1)[-1].rsplit("$", 1)[-1] == name:
             return enclosing
         enclosing = enclosing.rsplit("$", 1)[0] if "$" in enclosing else ""
+    first, _, rest = name.partition(".")
+    if first in context["imports"]:
+        imported = context["imports"][first] + ("." + rest if rest else "")
+        return normalized.get(imported)
     candidate = (context["package"] + "." if context["package"] else "") + name
     if candidate in normalized:
         return normalized[candidate]
@@ -182,24 +182,26 @@ def _method_variables(node, body, data, context, known_types):
     return variables
 
 
-def build_repair_index(units, method_entities, known_types):
+def build_repair_index(units, method_entities, known_types, *, include_tests=False):
     """Reuse preprocessing ASTs, including abstract/interface declarations."""
     from src.fault_graph.java_evidence import _method_id
     result = dict(types=[], methods=[], fields=[], inheritance=[], files=[])
     normalized_types = {known.replace("$", "."): known for known in sorted(known_types)}
     for path, rel, data, tree, descriptors, test_source in units:
-        if test_source:
+        if test_source and not include_tests:
             continue
         if tree.root_node.has_error:
             result["files"].append(dict(file=rel, status="parse_error"))
             continue
         package_node = next((c for c in tree.root_node.named_children if c.type == "package_declaration"), None)
         package = text(package_node, data).removeprefix("package ").rstrip(";").strip()
-        imports, wildcards = {}, []
+        imports, wildcards, static_imports = {}, [], []
         for c in tree.root_node.named_children:
             if c.type != "import_declaration":
                 continue
             value = text(c, data).removeprefix("import ").removeprefix("static ").rstrip(";").strip()
+            if text(c, data).startswith("import static "):
+                static_imports.append(value)
             if value.endswith(".*"):
                 wildcards.append(value[:-2])
             else:
@@ -220,7 +222,8 @@ def build_repair_index(units, method_entities, known_types):
             if own is None or own.type not in CLASS_LIKE_TYPES and own.start_byte not in anonymous:
                 continue
             declaring_type = anonymous.get(own.start_byte) or type_name(own, package, data)
-            context = dict(package=package, imports=imports, wildcards=wildcards, owner_type=declaring_type, normalized_types=normalized_types,
+            context = dict(package=package, imports=imports, wildcards=wildcards, static_imports=static_imports,
+                           owner_type=declaring_type, normalized_types=normalized_types,
                            type_parameters=[text(p.named_children[0], data) for a in (own, n)
                                             for p in (a.child_by_field_name("type_parameters").named_children
                                                       if a.child_by_field_name("type_parameters") else ()) if p.named_children])
@@ -265,6 +268,22 @@ def build_repair_index(units, method_entities, known_types):
                 record = dict(method_id=mid, entity_id=eid or mid, name=method_name, signature=" ".join(signature.split()),
                               return_type=return_type, comment=comment(n, data), has_body=body is not None,
                               constructor=n.type == "constructor_declaration", **modifiers(n, data, interface=interface), **common)
+                params = n.child_by_field_name("parameters")
+                record["parameter_types"] = []
+                record["varargs"] = False
+                for param in params.named_children if params else ():
+                    if param.type not in {"formal_parameter", "spread_parameter"}:
+                        continue
+                    type_node = param.child_by_field_name("type")
+                    if type_node is None:
+                        type_node = next((c for c in param.named_children if c.type not in
+                                          {"modifiers", "variable_declarator", "identifier", "dimensions"}), None)
+                    declared = text(type_node, data)
+                    declared += "".join(text(c, data) for c in param.named_children if c.type == "dimensions")
+                    if param.type == "spread_parameter":
+                        declared += "[]"
+                        record["varargs"] = True
+                    record["parameter_types"].append(declared)
                 record["variables"] = _method_variables(n, body, data, context, known_types)
                 if descriptor:
                     record["descriptor"] = dict(asdict(descriptor), file_path=str(descriptor.file_path))

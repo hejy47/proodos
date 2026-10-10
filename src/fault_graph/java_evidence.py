@@ -11,7 +11,8 @@ from pathlib import Path
 import re
 
 from src.fault_graph.evidence_graph import EvidenceGraph
-from src.fault_graph.static_call_graph import _MethodIndex, _extract_call_sites
+from src.fault_graph.java_call_resolver import JavaCallResolver
+from src.fault_graph.static_call_graph import _extract_call_sites
 from src.utils.java_source import CLASS_LIKE_TYPES, METHOD_TYPES, _java_parser, _extract_package_name, parse_java_methods
 
 _EXCLUDED_DIRS = {".git", ".gradle", ".idea", ".mvn", "target", "out", "node_modules", "VUL4J"}
@@ -134,7 +135,7 @@ def _method_id(method, node, data, imports, wildcard_imports, known_types):
 
 
 def index_java_source(graph: EvidenceGraph, project_root: Path, test_roots=(), *,
-                      files=None, external_methods=(), known_types=()):
+                      files=None, external_methods=(), external_symbols=None, known_types=()):
     root = project_root.resolve()
     units = []
     known_types = set(known_types)
@@ -242,14 +243,29 @@ def index_java_source(graph: EvidenceGraph, project_root: Path, test_roots=(), *
                         graph.add_relation(eid, "declares", method_entities[(path, method.start_byte)],
                                            dict(extractor="tree_sitter_java", source=rel))
     from src.fault_graph.java_repair_index import build_repair_index
-    graph.repair_index = build_repair_index(units, method_entities, known_types)
+    graph.call_index = build_repair_index(units, method_entities, known_types, include_tests=True)
+    production_files = {rel for _, rel, _, _, _, test_source in units if not test_source}
+    graph.repair_index = {kind: [r for r in records if r["file"] in production_files]
+                          for kind, records in graph.call_index.items()}
     graph.metadata["repair_ingredients_version"] = 1
     external = {method: eid for method, eid in external_methods}
-    index = _MethodIndex(all_methods + list(external))
+    symbols = {kind: records + (external_symbols or {}).get(kind, [])
+               for kind, records in graph.call_index.items()}
+    index = JavaCallResolver(all_methods + list(external), symbols)
+    call_bodies = {(path, node.start_byte): (data, node.child_by_field_name("body"))
+                   for path, _, data, tree, _, _ in units
+                   for node in _nodes(tree.root_node) if node.type in METHOD_TYPES}
+    call_stats = dict(version=2, strategy="lexical_types_and_class_hierarchy", sites=0, resolved_sites=0,
+                      unresolved_or_external_sites=0, candidate_targets=0)
     for caller in all_methods:
         caller_eid = method_entities[(caller.file_path, caller.start_byte)]
-        for site in _extract_call_sites(caller):
-            for callee in index.resolve(site, enclosing=caller):
+        data, body = call_bodies[caller.file_path, caller.start_byte]
+        for site in _extract_call_sites(caller, source_bytes=data, body=body):
+            callees = index.resolve(site, enclosing=caller)
+            call_stats["sites"] += 1
+            call_stats["resolved_sites" if callees else "unresolved_or_external_sites"] += 1
+            call_stats["candidate_targets"] += len(callees)
+            for callee in callees:
                 target = method_entities.get((callee.file_path, callee.start_byte)) or external[callee]
                 if target not in graph.entities:
                     # A file refresh references existing nodes without rewriting them.
@@ -257,10 +273,10 @@ def index_java_source(graph: EvidenceGraph, project_root: Path, test_roots=(), *
                                      content={}, provenance={}, reference_only=True)
                 graph.add_relation(caller_eid, "calls_candidate", target,
                                    dict(extractor="tree_sitter_java", source=str(caller.file_path.relative_to(root)),
-                                        resolution="lexical_receiver_and_name_arity_candidates",
+                                        resolution="lexical_types_and_class_hierarchy",
                                         interpretation="Static candidate; execution and dynamic dispatch are not established."))
     graph.metadata.update(source_file_count=len(units), source_scope="all_project_java_sources",
-                          excluded_directories=sorted(_EXCLUDED_DIRS))
+                          excluded_directories=sorted(_EXCLUDED_DIRS), java_call_resolution=call_stats)
     return tests_by_name, production_methods
 
 

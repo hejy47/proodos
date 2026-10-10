@@ -186,6 +186,9 @@ def save_sqlite(graph: EvidenceGraph, path: Path) -> None:
             if hasattr(graph, "repair_index"):
                 from src.fault_graph.java_repair_index import write_repair_tables
                 write_repair_tables(db, graph.repair_index)
+                if hasattr(graph, "call_index"):
+                    from src.fault_graph.java_call_resolver import write_call_symbols
+                    write_call_symbols(db, graph.call_index)
                 for file_name, digest in graph.metadata.get("source_sha256", {}).items():
                     db.execute("INSERT OR IGNORE INTO source_files(path,sha256,encoding) VALUES (?,?,?)",
                                (file_name, digest, graph.metadata.get("source_encodings", {}).get(file_name, "utf-8")))

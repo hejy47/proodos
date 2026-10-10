@@ -51,6 +51,11 @@ The public stages are:
 - `debug`: diagnose, generate, compile, and test repairs.
 - `all`: run both stages.
 
+Java call candidates use receiver types, lexical variable scopes, imports, and
+project inheritance. Constructors are resolved within their target class.
+Unresolved calls and JDK/third-party targets do not create project-wide
+same-name matches; virtual calls may retain several related implementations.
+
 ## Results
 
 For the command above, the accepted patch is written to:

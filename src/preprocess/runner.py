@@ -94,7 +94,7 @@ class PreprocessStageRunner:
         return PreprocessRunSummary(
             project=f"{self.project_spec.dataset} {case_id}", output_dir=output_dir,
             status=PipelineStageStatus.SUCCESS,
-            message=f"Static Java context completed ({len(graph.aliases)} methods, {len(graph.relations)} relations)",
+            message=f"Preprocess completed ({len(graph.aliases)} methods, {len(graph.relations)} relations)",
         )
 
     def _run_kernel_static_graph(self) -> PreprocessRunSummary:
