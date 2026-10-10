@@ -21,7 +21,7 @@ class DebugRunSummary:
     project: str
     debug_dir: Path
     result_dir: Path
-    result_path: Path
+    result_path: Path | None
     status: PipelineStageStatus
     message: str
 
@@ -91,29 +91,44 @@ class DebugStageRunner:
             encoding="utf-8",
         )
 
-        patch_text = str(repair_result.get("final_diff") or "")
-        # Diff hunks preserve source newlines, including CRLF context lines.
-        patch_bytes = patch_text.encode("utf-8")
-        patch_path.write_bytes(patch_bytes)
-        if patch_path.read_bytes() != patch_bytes:
-            raise ValueError(f"Repair patch at {patch_path} could not be verified")
-
         status = (
             PipelineStageStatus.SUCCESS
             if repair_result.get("repair_status") == "success"
             else PipelineStageStatus.FAILED
         )
+        result_path = None
         if status == PipelineStageStatus.SUCCESS:
+            patch_text = str(repair_result.get("final_diff") or "")
+            if patch_text.strip():
+                # Preserve source newlines, including CRLF diff context lines.
+                patch_bytes = patch_text.encode("utf-8")
+                try:
+                    patch_path.write_bytes(patch_bytes)
+                    if patch_path.read_bytes() != patch_bytes:
+                        raise ValueError(f"Repair patch at {patch_path} could not be verified")
+                except Exception:
+                    patch_path.unlink(missing_ok=True)
+                    raise
+                result_path = patch_path
+            message = (
+                f"Debug completed in {duration_seconds:.2f} seconds. "
+                f"Token cost: {usage.total_tokens}. "
+                + (f"Patch saved in {result_path}." if result_path else "No source changes; no patch generated.")
+            )
             (debug_dir / "repair_complete").touch()
             print("Debug finished", flush=True)
+        else:
+            reason = str(repair_result.get("explanation") or "Repair did not complete")
+            message = (
+                f"Debug failed in {duration_seconds:.2f} seconds. "
+                f"Token cost: {usage.total_tokens}. Reason: {reason}"
+            )
+            print(f"Debug failed: {reason}", flush=True)
         return DebugRunSummary(
             project=str(self.project.spec),
             debug_dir=debug_dir,
             result_dir=self.result_dir,
-            result_path=patch_path,
+            result_path=result_path,
             status=status,
-            message=(
-                f"Debug completed in {duration_seconds:.2f} seconds. "
-                f"Token cost: {usage.total_tokens}. Patch saved in {patch_path}."
-            ),
+            message=message,
         )

@@ -141,7 +141,7 @@ class DebugPipeline:
             metadata={
                 "debug_dir": str(result.debug_dir),
                 "result_dir": str(result.result_dir),
-                "result_path": str(result.result_path),
+                "result_path": str(result.result_path) if result.result_path is not None else None,
             },
         )
 

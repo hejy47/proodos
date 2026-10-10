@@ -48,6 +48,7 @@ class RepairOrchestrator:
         self.accepted_patches: list[dict[str, object]] = []
         self.accepted_files: set[str] = set()
         self.current_failing_tests = []
+        self.last_regression = None
 
     def _check_budget(self):
         if time.monotonic() - self.started_at >= self.time_budget_seconds:
@@ -205,6 +206,7 @@ class RepairOrchestrator:
         try:
             self._check_budget()
             regression = self.project.run_tests()
+            self.last_regression = regression
             self.current_failing_tests = list(regression.failing_tests)
             if not self.current_failing_tests:
                 return self._success(history, 0)
@@ -316,9 +318,8 @@ class RepairOrchestrator:
                                 "file_path": validation.get("file_path"),
                                 "review": review.get("reason", ""),
                             })
-                            self.current_failing_tests = list(
-                                review["review_agent"].last_regression.failing_tests
-                            )
+                            self.last_regression = review["review_agent"].last_regression
+                            self.current_failing_tests = list(self.last_regression.failing_tests)
                             history.append(record)
                             accepted_this_round = True
                             if decision == "accept_finish" or not self.current_failing_tests:
@@ -351,6 +352,10 @@ class RepairOrchestrator:
             return self._failure(history, f"Repair error: {type(exc).__name__}: {exc}")
 
     def _success(self, history, rounds):
+        regression = self.last_regression
+        if (regression is None or not regression.success or regression.failed
+                or regression.errors or regression.failing_tests):
+            return self._failure(history, "Full regression did not pass or its result is unavailable")
         return {
             "repaired_methods": [p["method_id"] for p in self.accepted_patches],
             "explanation": f"All regression tests pass after {len(self.accepted_patches)} accepted patch(es).",
@@ -364,5 +369,5 @@ class RepairOrchestrator:
             "repaired_methods": [p["method_id"] for p in self.accepted_patches],
             "explanation": reason, "repair_status": "incomplete",
             "accepted_patches": self.accepted_patches, "history": history,
-            "final_diff": snapshot_diff(self.baseline_sources, self.project, self.accepted_files),
+            "final_diff": "",
         }
