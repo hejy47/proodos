@@ -11,7 +11,7 @@ from src.java_runtime.runner_cli import (
 )
 from src.java_runtime.test_runner_builder import build_test_runner
 from src.models import TestCase
-from src.utils.cmd_util import run_command
+from src.utils.cmd_util import run_test_command
 
 
 def discover_related_test_cases(
@@ -75,7 +75,7 @@ def discover_compiled_test_cases(
                 "--includes",
                 test_includes,
             ]
-            result = run_command(command, cwd=project_path, env=command_env)
+            result = run_test_command(command, cwd=project_path, env=command_env)
             if not result.succeeded:
                 details = result.stderr.strip() or result.stdout.strip() or "test discovery failed"
                 raise RuntimeError(f"Failed to discover Java tests with the Proodos runner: {details}")

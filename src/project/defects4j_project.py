@@ -7,7 +7,7 @@ from typing import Mapping
 from src.models import CompilationResult, ProjectSpec, TestCase, TestRunResult
 from src.project.base_project import Project
 from src.java_runtime.runner_cli import runner_command_env
-from src.utils.cmd_util import run_command
+from src.utils.cmd_util import run_command, run_test_command
 from src.utils.java_source import discover_package_prefixes
 from src.utils.java_helper import discover_compiled_test_cases
 from src.utils.java_util import (
@@ -47,7 +47,7 @@ class Defects4JProject(Project):
         )
 
     def run_tests(self, env: Mapping[str, str] | None = None) -> TestRunResult:
-        result = run_command(["defects4j", "test"], cwd=self.project_path, env=self._command_env(env))
+        result = run_test_command(["defects4j", "test"], cwd=self.project_path, env=self._command_env(env))
         failing_tests = parse_defects4j_failing_tests(self.project_path, result.stdout, result.stderr)
         return TestRunResult(
             success=result.succeeded and not failing_tests,
@@ -65,7 +65,7 @@ class Defects4JProject(Project):
         class_name, method_name = split_test_id(test_case_id)
         if method_name == "*" and ("::" not in test_case_id and "#" not in test_case_id):
             return self._run_test_class(class_name, env=env)
-        result = run_command(["defects4j", "test", "-t", test_case_id], cwd=self.project_path, env=env)
+        result = run_test_command(["defects4j", "test", "-t", test_case_id], cwd=self.project_path, env=env)
         failing_tests = parse_defects4j_failing_tests(self.project_path, result.stdout, result.stderr)
         return TestRunResult(
             success=result.succeeded and not failing_tests,
@@ -159,7 +159,7 @@ class Defects4JProject(Project):
             )
 
         command = ["java", "-Djava.awt.headless=true", "-cp", classpath, "org.junit.runner.JUnitCore", class_name]
-        result = run_command(command, cwd=self.project_path, env=env, timeout_seconds=120)
+        result = run_test_command(command, cwd=self.project_path, env=env)
         summary = parse_junitcore_output(result.stdout, result.stderr)
         passed = max(summary.total - summary.failures - summary.errors, 0)
         return TestRunResult(

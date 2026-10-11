@@ -11,7 +11,7 @@ from src.models import ProjectSpec
 from src.patching.java.models import TestOutcome
 from src.java_runtime.runner_cli import TEST_RUNNER_MAIN_CLASS, runner_command_env
 from src.project.java_project import JavaProject
-from src.utils.cmd_util import run_command
+from src.utils.cmd_util import get_test_timeout_seconds, run_command, run_test_command
 
 
 RUNNER_OUTCOME_RE = re.compile(
@@ -357,8 +357,9 @@ def run_single_test_with_runner(
     test_method: str,
     cwd: Path,
     framework: str = "JUNIT",
-    per_test_timeout: int = 60,
+    per_test_timeout: int | None = None,
 ) -> tuple[TestOutcome, str, str]:
+    timeout = get_test_timeout_seconds() if per_test_timeout is None else per_test_timeout
     cwd = Path(cwd).resolve()
     classpath = _absolutize_classpath(classpath, cwd)
     with tempfile.NamedTemporaryFile(
@@ -383,12 +384,12 @@ def run_single_test_with_runner(
             "--testMethods",
             str(tests_file),
             "--perTestTimeout",
-            str(per_test_timeout),
+            str(timeout),
         ]
-        result = run_command(
+        result = run_test_command(
             command,
             cwd=cwd,
-            timeout_seconds=per_test_timeout + 30,
+            timeout_seconds=timeout,
             env=runner_command_env(project_path=cwd),
         )
         outcome = parse_runner_outcome(
@@ -396,7 +397,7 @@ def run_single_test_with_runner(
             test_class=test_class,
             test_method=test_method,
         )
-        if outcome is None:
+        if not result.succeeded or outcome is None:
             return (
                 TestOutcome(
                     passed=False,

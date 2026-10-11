@@ -7,7 +7,7 @@ from typing import Mapping
 
 from src.models import CompilationResult, ProjectSpec, TestCase, TestRunResult
 from src.project.base_project import Project
-from src.utils.cmd_util import run_command
+from src.utils.cmd_util import run_command, run_test_command
 from src.utils.java_helper import discover_compiled_test_cases
 from src.utils.java_util import (
     GRADLE,
@@ -51,7 +51,7 @@ class JavaProject(Project):
             return self._unsupported_result("No supported Java build tool found. Expected pom.xml or build.gradle.")
 
         command = self._build_test_command()
-        result = run_command(command, cwd=self.project_path, env=env)
+        result = run_test_command(command, cwd=self.project_path, env=env)
         summary = self._parse_test_reports(result.started_at - 2.0)
         return self._to_test_run_result(result, summary)
 
@@ -60,7 +60,7 @@ class JavaProject(Project):
             return self._unsupported_result("No supported Java build tool found. Expected pom.xml or build.gradle.")
 
         command = self._build_single_test_command(test_case_id)
-        result = run_command(command, cwd=self.project_path, env=env)
+        result = run_test_command(command, cwd=self.project_path, env=env)
         summary = self._parse_test_reports(result.started_at - 2.0)
         return self._to_test_run_result(result, summary)
 
@@ -271,6 +271,8 @@ gradle.projectsEvaluated {
         total = junit_summary.total if junit_summary is not None else 0
         failed = junit_summary.failures if junit_summary is not None else 0
         errors = junit_summary.errors if junit_summary is not None else 0
+        if command_result.return_code not in (0, 1):
+            errors = max(errors, 1)
         failing_tests = junit_summary.failing_tests if junit_summary is not None else []
         passed = max(total - failed - errors, 0)
         success = command_result.succeeded and failed == 0 and errors == 0

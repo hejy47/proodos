@@ -8,11 +8,9 @@ import tempfile
 
 from src.java_runtime.runner_cli import TEST_RUNNER_MAIN_CLASS, runner_command_env, test_runner_classpath
 from src.models import TestCase
-from src.utils.cmd_util import run_command
+from src.utils.cmd_util import get_test_timeout_seconds, run_command, run_test_command
 
 JAVA_AGENT_CLI_CLASS = TEST_RUNNER_MAIN_CLASS
-PER_TEST_TIMEOUT_SECONDS = 300
-INSTRUMENTATION_RUN_TIMEOUT_SECONDS = 1800
 
 @dataclass(frozen=True)
 class TraceCollectionError:
@@ -51,17 +49,19 @@ class JavaTraceCollector:
             trace_report_dir = temp_root / "trace-report"
             self._write_test_methods_file(tests_file, selected_tests)
 
+            timeout = get_test_timeout_seconds()
             command = self._batch_command(
                 agent_jar_path=agent_jar_path,
                 classpath=classpath,
                 tests_file=tests_file,
                 trace_report_dir=trace_report_dir,
                 include_prefixes=include_prefixes,
+                per_test_timeout=timeout,
             )
-            result = run_command(
+            result = run_test_command(
                 command,
                 cwd=self.project.project_path,
-                timeout_seconds=INSTRUMENTATION_RUN_TIMEOUT_SECONDS,
+                timeout_seconds=timeout,
                 env=runner_command_env(
                     project_path=self.project.project_path,
                     dataset=self.project_spec.dataset,
@@ -141,6 +141,7 @@ class JavaTraceCollector:
         tests_file: Path,
         trace_report_dir: Path,
         include_prefixes: list[str],
+        per_test_timeout: int | None = None,
     ) -> list[str]:
         command = [
             "java",
@@ -158,7 +159,7 @@ class JavaTraceCollector:
             "--testMethods",
             str(tests_file),
             "--perTestTimeout",
-            str(PER_TEST_TIMEOUT_SECONDS),
+            str(get_test_timeout_seconds() if per_test_timeout is None else per_test_timeout),
         ]
 
         return command

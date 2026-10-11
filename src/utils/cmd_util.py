@@ -9,6 +9,9 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 
+DEFAULT_TEST_TIMEOUT_SECONDS = 300
+
+
 @dataclass(frozen=True)
 class CommandResult:
     command: list[str]
@@ -23,6 +26,33 @@ class CommandResult:
     @property
     def succeeded(self) -> bool:
         return self.return_code == 0
+
+
+def get_test_timeout_seconds(env: Mapping[str, str] | None = None) -> int:
+    value = (env or {}).get(
+        "PROODOS_TEST_TIMEOUT_SECONDS",
+        os.environ.get("PROODOS_TEST_TIMEOUT_SECONDS", str(DEFAULT_TEST_TIMEOUT_SECONDS)),
+    )
+    try:
+        timeout = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("PROODOS_TEST_TIMEOUT_SECONDS must be a positive integer") from exc
+    if timeout <= 0:
+        raise ValueError("PROODOS_TEST_TIMEOUT_SECONDS must be a positive integer")
+    return timeout
+
+
+def run_test_command(
+    command: Sequence[str],
+    cwd: Path,
+    timeout_seconds: int | None = None,
+    env: Mapping[str, str] | None = None,
+) -> CommandResult:
+    """Bound each test command, including all tests in a batch or regression."""
+    timeout = get_test_timeout_seconds(env) if timeout_seconds is None else timeout_seconds
+    if timeout <= 0:
+        raise ValueError("Test command timeout must be positive")
+    return run_command(command, cwd=cwd, timeout_seconds=timeout, env=env)
 
 
 def run_command(
@@ -41,7 +71,7 @@ def run_command(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            preexec_fn=os.setsid,
+            start_new_session=True,
         )
     except FileNotFoundError as exc:
         finished_at = time.time()
@@ -78,7 +108,8 @@ def run_command(
             cwd=cwd,
             return_code=124,
             stdout=_decode_output(stdout),
-            stderr=_decode_output(stderr) or f"Command timed out after {timeout_seconds} seconds",
+            stderr=(f"Command timed out after {timeout_seconds} seconds"
+                    + ("\n" + _decode_output(stderr) if stderr else "")),
             duration_seconds=finished_at - started_at,
             started_at=started_at,
             finished_at=finished_at,
@@ -92,11 +123,9 @@ def _decode_output(payload: str | bytes | None) -> str:
 
 
 def _terminate_process_group(process: subprocess.Popen[str]) -> None:
-    try:
-        process_group_id = os.getpgid(process.pid)
-    except ProcessLookupError:
-        return
-
+    # The session/process group created by Popen keeps this ID even if the
+    # leader exits before its children close the captured output pipes.
+    process_group_id = process.pid
     try:
         os.killpg(process_group_id, signal.SIGTERM)
     except ProcessLookupError:
@@ -104,10 +133,11 @@ def _terminate_process_group(process: subprocess.Popen[str]) -> None:
 
     try:
         process.wait(timeout=1)
-        return
     except subprocess.TimeoutExpired:
         pass
 
+    # A terminated wrapper does not imply its Java/test subprocesses exited.
+    # Kill remaining group members before waiting for stdout/stderr to close.
     try:
         os.killpg(process_group_id, signal.SIGKILL)
     except ProcessLookupError:

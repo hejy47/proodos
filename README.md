@@ -74,7 +74,13 @@ PROODOS_MAX_DIAGNOSIS_ROUNDS=3
 PROODOS_MAX_REVIEW_ATTEMPTS=2
 PROODOS_MAX_REPAIR_ROUNDS=5
 PROODOS_TIME_BUDGET_SECONDS=3600
+PROODOS_TEST_TIMEOUT_SECONDS=300
 ```
+
+Each test command has a 300-second timeout by default, including full regression,
+selected-test validation, test discovery, and tracing. The limit applies to the
+whole command, not each test in a suite. On timeout, Proodos terminates the process
+group and reports an execution error; partial results cannot count as a passing run.
 
 The patch agent can query Java repair ingredients on demand: `list_accessible_variables`
 returns variables and scopes, `list_callable_methods` returns project method signatures
