@@ -36,7 +36,7 @@ class PatchReviewAgent:
             for test in regression.failing_tests
         ]
         failure_text = _truncate(str(failures), 6000)
-        current_tests = _truncate(str([test.test_id for test in regression.failing_tests]), 2000)
+        current_tests = str([test.test_id for test in regression.failing_tests])
         execution_error = bool(
             regression.errors or (not regression.success and not regression.failing_tests and regression.failed == 0)
         )

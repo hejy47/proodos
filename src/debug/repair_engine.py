@@ -18,7 +18,6 @@ from src.fault_graph.java_refresh import has_repair_index, refresh_java_files, u
 
 
 FEEDBACK_LIMIT = 2000
-HISTORY_LIMIT = 6000
 TOTAL_CONTEXT_LIMIT = 12000
 
 
@@ -123,7 +122,7 @@ class RepairOrchestrator:
         task = (
             f"<current_failure>\n{self._failure_text(failures)}\n</current_failure>\n"
             f"<diagnosis_round>{diagnosis_round}</diagnosis_round>\n"
-            f"<previous_patch_feedback>{_truncate(feedback, HISTORY_LIMIT)}</previous_patch_feedback>\n"
+            f"<previous_patch_feedback>{feedback or ''}</previous_patch_feedback>\n"
             "Diagnose the production defect on this current version."
         )
         report = agent.run(task).get("report") or {}
@@ -143,10 +142,10 @@ class RepairOrchestrator:
             f"<failure>\n{self._failure_text(failures)}\n</failure>\n"
             f"<diagnosed_method_id>{method_id}</diagnosed_method_id>\n"
             f"<diagnosed_source>\n{source}\n</diagnosed_source>\n"
-            f"<debug_report>\n{_truncate(json.dumps(debug_report, ensure_ascii=False, default=str), FEEDBACK_LIMIT)}\n</debug_report>\n"
+            f"<debug_report>\n{json.dumps(debug_report, ensure_ascii=False, default=str)}\n</debug_report>\n"
             f"<patch_attempt>{attempt}</patch_attempt>\n"
-            f"<previous_validation_feedback>{_truncate(feedback, FEEDBACK_LIMIT)}</previous_validation_feedback>\n"
-            f"<previous_attempts>{_truncate(history, HISTORY_LIMIT)}</previous_attempts>\n"
+            f"<previous_validation_feedback>{feedback or ''}</previous_validation_feedback>\n"
+            f"<previous_attempts>{history or ''}</previous_attempts>\n"
             "Generate one minimal production repair, or request further diagnosis if this suspect is insufficient."
         )
         return agent.run(task)
@@ -170,10 +169,10 @@ class RepairOrchestrator:
                     "<selected_test_passed>true</selected_test_passed>\n"
                     f"<candidate_patch>\n{patch.get('replacement_function', '')}\n</candidate_patch>\n"
                     f"<validated_diff>\n{validation.get('diff', '')}\n</validated_diff>\n"
-                    f"<expected_behavior>{_truncate(patch.get('expected_behavior'), FEEDBACK_LIMIT)}</expected_behavior>\n"
-                    f"<patch_explanation>{_truncate(patch.get('explanation'), FEEDBACK_LIMIT)}</patch_explanation>\n"
+                    f"<expected_behavior>{patch.get('expected_behavior') or ''}</expected_behavior>\n"
+                    f"<patch_explanation>{patch.get('explanation') or ''}</patch_explanation>\n"
                     f"<baseline_failing_tests>{sorted(before_ids)}</baseline_failing_tests>\n"
-                    f"<accepted_patches>{_truncate(json.dumps(self.accepted_patches, ensure_ascii=False, default=str), HISTORY_LIMIT)}</accepted_patches>\n"
+                    f"<accepted_patches>{json.dumps(self.accepted_patches, ensure_ascii=False, default=str)}</accepted_patches>\n"
                     "Review the candidate after the full regression result."
                 )
             except Exception as exc:
@@ -255,9 +254,7 @@ class RepairOrchestrator:
                                   "selection": selection_reason, "method_id": method_id,
                                   "patch": patch}
                         if str(patch.get("type") or "patch").lower() == "request_diagnosis":
-                            diagnosis_feedback = _truncate(
-                                patch.get("reason") or patch.get("explanation"), FEEDBACK_LIMIT
-                            )
+                            diagnosis_feedback = str(patch.get("reason") or patch.get("explanation") or "")
                             record["status"] = "request_diagnosis"
                             history.append(record)
                             requested_diagnosis = True
@@ -332,7 +329,7 @@ class RepairOrchestrator:
                             record["rollback_error"] = str(exc)
                             history.append(record)
                             return self._failure(history, "Candidate rollback failed")
-                        feedback = _truncate(review.get("reason"), FEEDBACK_LIMIT)
+                        feedback = str(review.get("reason") or "")
                         attempt_history.append({"attempt": attempt, "feedback": feedback,
                                                 "review": record["review"]})
                         history.append(record)
