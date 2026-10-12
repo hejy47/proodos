@@ -7,10 +7,12 @@ from src.debug.semantic_agent.tools.repair_ingredients import RepairIngredients
 class PatchGenerationAgent:
     """Return one replacement function; the controller owns validation and retries."""
 
-    def __init__(self, llm_settings, output_dir, test_id, method_id, *, preprocess_data=None):
+    def __init__(self, llm_settings, output_dir, test_id, method_id, *, preprocess_data=None,
+                 execution_trace=None):
         self.method_id = method_id
         self.test_id = test_id
         self.preprocess_data = preprocess_data
+        self.execution_trace = execution_trace
         self.ingredients = RepairIngredients(preprocess_data)
         self.agent = Agent(
             tools=self.ingredients.tools(), system_prompt=patch_generation_system_prompt,
@@ -35,5 +37,6 @@ class PatchGenerationAgent:
             raise ValueError("Return one complete replacement_function")
 
     def run(self, task):
-        context = build_repair_context(self.preprocess_data, self.test_id, self.method_id)
+        context = build_repair_context(self.preprocess_data, self.test_id, self.method_id,
+                                       execution_trace=self.execution_trace)
         return self.agent.run(f"{task}\n\n<repair_context>\n{context}\n</repair_context>")

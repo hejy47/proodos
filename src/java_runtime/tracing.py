@@ -1,10 +1,12 @@
-"""Execute selected tests with a Java agent, only for runtime tools."""
+"""Execute selected tests with a Java agent and materialize runtime reports."""
 from __future__ import annotations
 import csv
+import math
 from dataclasses import dataclass
 from pathlib import Path
 import shutil
 import tempfile
+import time
 
 from src.java_runtime.runner_cli import TEST_RUNNER_MAIN_CLASS, runner_command_env, test_runner_classpath
 from src.models import TestCase
@@ -32,6 +34,7 @@ class JavaTraceCollector:
         spectra_path: Path,
         tests_report_path: Path,
         trace_report_path: Path,
+        deadline: float | None = None,
     ) -> list[TraceCollectionError] | None:
         classpath = self.project.test_runtime_classpath()
         if not classpath or not classpath.strip():
@@ -49,14 +52,14 @@ class JavaTraceCollector:
             trace_report_dir = temp_root / "trace-report"
             self._write_test_methods_file(tests_file, selected_tests)
 
-            timeout = get_test_timeout_seconds()
+            timeout = self._timeout(get_test_timeout_seconds(), deadline)
             command = self._batch_command(
                 agent_jar_path=agent_jar_path,
                 classpath=classpath,
                 tests_file=tests_file,
                 trace_report_dir=trace_report_dir,
                 include_prefixes=include_prefixes,
-                per_test_timeout=timeout,
+                per_test_timeout=math.ceil(timeout),
             )
             result = run_test_command(
                 command,
@@ -76,10 +79,11 @@ class JavaTraceCollector:
                 ]
 
             # The agent writes trace.ser on JVM shutdown; convert to CSV
-            # reports consumed by the on-demand trace tool.
+            # reports shared by fault localization and repair context.
             report_error = self._materialize_trace_report(
                 agent_jar_path=agent_jar_path,
                 trace_report_dir=trace_report_dir,
+                deadline=deadline,
             )
             if report_error is not None:
                 return [
@@ -108,6 +112,7 @@ class JavaTraceCollector:
         *,
         agent_jar_path: Path,
         trace_report_dir: Path,
+        deadline: float | None = None,
     ) -> str | None:
         """Convert agent ``trace.ser`` into spectra/tests/trace CSV artifacts."""
         ser_file = trace_report_dir / "trace.ser"
@@ -126,7 +131,7 @@ class JavaTraceCollector:
                 str(trace_report_dir),
             ],
             cwd=self.project.project_path,
-            timeout_seconds=600,
+            timeout_seconds=self._timeout(600, deadline),
         )
         if not report_result.succeeded:
             return self._command_error(report_result.stdout, report_result.stderr)
@@ -173,10 +178,18 @@ class JavaTraceCollector:
     ) -> str:
         agent_args = [
             f"outputDir={trace_report_dir}",
+            "includeTests=true",
         ]
         if include_prefixes:
             agent_args.append(f"includes={':'.join(include_prefixes)}")
         return f"-javaagent:{agent_jar_path}={','.join(agent_args)}"
+
+    @staticmethod
+    def _timeout(limit, deadline):
+        remaining = deadline - time.monotonic() if deadline is not None else limit
+        if remaining <= 0:
+            raise TimeoutError("Case time budget exhausted during trace collection")
+        return min(limit, remaining)
 
 
     def _write_test_methods_file(self, path: Path, selected_tests: list[TestCase]) -> None:

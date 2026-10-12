@@ -6,7 +6,6 @@ import json
 from typing import Any
 
 from src.observability.java.bridge import apply_observation
-from src.observability.java.tracing import collect_java_trace
 from src.debug.semantic_agent.tools.tool_response import format_observation_result
 
 
@@ -15,7 +14,7 @@ MAX_TOTAL_RUNTIME_CALLS = 6
 
 
 class RuntimeExperiments:
-    """Case-scoped Java observation and tracing budgets."""
+    """Case-scoped Java observation budgets."""
 
     def __init__(self, project, preprocess_data, test_id):
         self.project = project
@@ -57,7 +56,7 @@ class RuntimeExperiments:
         return (
             f"Observation/intervention is not supported for this {language} project "
             "(the available runtime backend supports Java only). Do not call "
-            "probe_function/trace_functions for this case — classify from source "
+            "probe_function for this case — classify from source "
             "and propagation evidence instead."
         )
 
@@ -148,65 +147,3 @@ class RuntimeExperiments:
             [method_id, probe_spec],
             lambda: self._probe_function(method_id, probe_spec),
         )
-
-    def trace_functions(self, method_ids, max_events=1000):
-        def run():
-            if not self.can_run_runtime_experiment:
-                return self._blocked_runtime_result()
-            unsupported = self._unsupported_backend()
-            if unsupported:
-                return f"status: unsupported\nerror: {unsupported}"
-            if self.project is None:
-                return "status: execution_error\nerror: Java tracing requires a project."
-
-            self._total_runtime_calls += 1
-            result = collect_java_trace(
-                project=self.project,
-                test_id=str(self.test_id),
-                method_ids=method_ids,
-                max_events=max_events,
-            )
-            if result.get("status") != "success":
-                return (
-                    f"status: {result.get('status', 'execution_error')}\n"
-                    f"error: {result.get('error', 'Java trace collection failed')}"
-                )
-
-            observed = result["observed"]
-            missing = result["not_observed"]
-            fields = [
-                f"test_id: {result['test_id']}",
-                f"test_outcome: {result.get('test_outcome') or 'unknown'}",
-                "trace_source: on-demand Java agent",
-                f"event_count: {result['event_count']}",
-                "observed_method_ids:",
-                *(
-                    [
-                        f"- {method_id}: {result['counts'].get(method_id, 0)} call(s)"
-                        for method_id in observed
-                    ]
-                    or ["- (none)"]
-                ),
-                "requested_but_not_observed:",
-                *([f"- {method_id}" for method_id in missing] or ["- (none)"]),
-            ]
-            if result.get("events"):
-                fields.extend(
-                    [
-                        "events:",
-                        *[
-                            f"- {event['event']}: {event['method_id']}"
-                            for event in result["events"]
-                        ],
-                    ]
-                )
-            if result.get("truncated"):
-                fields.append(f"note: event output was capped at {max_events} entries.")
-            return (
-                "## Java Trace Result\n"
-                "status: success\n"
-                "summary: reran the selected test with Java method tracing\n\n"
-                + "\n".join(fields)
-            )
-
-        return self._run("trace_functions", [method_ids, max_events], run)

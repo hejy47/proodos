@@ -84,6 +84,7 @@ public final class TraceReportMain {
     }
 
     private static void writeTrace(TraceData data, Path path) throws IOException {
+        // Columns: test id, outcome, probe sequence, hit counts, runtime calls.
         BufferedWriter writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8);
         try {
             for (TraceTestData test : data.getTests()) {
@@ -91,11 +92,12 @@ public final class TraceReportMain {
                 writer.write("\t");
                 writer.write(test.isFailed() || test.isError() ? "-" : "+");
                 writer.write("\t");
-                // writeHitCounts(writer, test.getHitCounts());
-                // writer.write("\t");
-                // writeDynamicEdges(writer, test.getDynamicEdges());
                 // Enter/exit probe stream: e<id>,x<id> (see TraceTestData.getMethodCallOrder)
                 writeCallSequence(writer, test.getMethodCallOrder());
+                writer.write("\t");
+                writeHitCounts(writer, test.getHitCounts());
+                writer.write("\t");
+                writeDynamicEdges(writer, test.getDynamicEdges());
                 writer.newLine();
             }
         } finally {

@@ -88,12 +88,18 @@ and comments, and `read_code` reads indexed source. These tools use the preproce
 SQLite index and return Markdown. JDK and third-party methods are outside the index.
 After a patch is accepted, only its changed Java file is reindexed before repair continues.
 
-After fault localization, code automatically assembles repair context from the existing
-index and failure report, with no LLM calls or preprocessing changes. It has three sections:
+After selecting a failing test, Proodos traces it once before fault localization.
+Source queries show whether methods executed and whether candidate calls were observed;
+method-entry probes remain available on demand. The trace is reused across diagnosis and
+patch attempts, and collected again after an accepted repair when selecting the next test.
+
+After fault localization, code automatically assembles repair context from this trace,
+the existing index, and failure report, with no LLM calls or preprocessing changes. It has three sections:
 `Test Code` (the complete selected test with its failure location marked),
 `Test Failure Message` (the original failure report), and `Dependency Chain`
-(call candidates and related source, including assertions inside test helpers).
-Failure reports and supplementary source are bounded; the selected test is kept complete.
+(executed calls and related source, including assertions inside test helpers).
+Static call candidates are used when no runtime path is available. Failure reports are
+bounded; the selected test is kept complete.
 The patch agent uses this context to derive expected behavior before generating a patch
 and records a concise evidence summary in its existing log.
 

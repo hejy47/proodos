@@ -1,7 +1,7 @@
 """Small, on-demand assertion and call-chain context for patch generation.
 
-Reads the existing source index without modifying preprocessing. Static call
-paths are navigation candidates, not dynamic slices or inferred specifications.
+Uses the selected test's runtime calls and existing source index. Static call
+paths remain available when a runtime path cannot be found.
 """
 from __future__ import annotations
 
@@ -129,9 +129,12 @@ class _Source:
 
 
 class _ContextBuilder:
-    def __init__(self, graph, test_id, method_id, failure_report=None):
+    def __init__(self, graph, test_id, method_id, failure_report=None, execution_trace=None):
         self.graph, self.test_id, self.method_id = graph, test_id, method_id
         self.failure_report = failure_report
+        self.execution_trace = execution_trace if execution_trace is not None and execution_trace.test_id == test_id else None
+        if self.execution_trace is not None:
+            self.execution_trace.bind_source_index(graph)
         self.sources = {}
         self.source_errors = {}
 
@@ -212,8 +215,40 @@ class _ContextBuilder:
                     pending.append((caller, [caller, *path]))
         return []
 
+    def dynamic_path(self, anchors):
+        trace = self.execution_trace
+        if trace is None or trace.status != "success" or trace.test_id != self.test_id:
+            return []
+        methods = {trace.runtime_method_id(self.graph.entities[eid]["content"].get("method_id"))
+                   for eid in anchors}
+        target = trace.runtime_method_id(self.method_id)
+        if target is None:
+            return []
+        pending, seen = deque([(target, [target])]), {target}
+        while pending:
+            current, path = pending.popleft()
+            if current in methods:
+                result = []
+                for method_id in path:
+                    method_id = trace.runtime_to_source.get(method_id, method_id)
+                    eid = self.graph.aliases.get(method_id)
+                    if eid is None:
+                        owner, _, signature = method_id.partition("#")
+                        eid = next((s.entity_id for s in self.find(owner, signature.split("(", 1)[0])
+                                    if s.method_id == method_id), method_id)
+                    result.append(eid)
+                return result
+            for caller in sorted(trace.incoming.get(current, ())):
+                if caller not in seen:
+                    seen.add(caller)
+                    pending.append((caller, [caller, *path]))
+        return []
+
     def build(self):
         report = self.failure_report
+        if (report is None and self.execution_trace is not None and self.execution_trace.status == "success"
+                and self.execution_trace.failure_report):
+            report = self.execution_trace.failure_report
         if report is None:
             report = self.graph.entities.get("report:" + self.test_id, {}).get("content", {}).get("text", "")
         report = str(report or "")
@@ -229,7 +264,10 @@ class _ContextBuilder:
                 break
         target = self.graph.aliases.get(self.method_id, self.method_id)
         anchors = list(dict.fromkeys([s.entity_id for s in tests] + [s.entity_id for s, _ in frames]))
-        path = self.path(target, anchors) if anchors else []
+        path = self.dynamic_path([source.entity_id for source in tests] or anchors)
+        dynamic = bool(path)
+        if not path:
+            path = self.path(target, anchors) if anchors else []
         assertions = {}
         for source, line in frames:
             for start, end, text in source.assertions():
@@ -263,7 +301,7 @@ class _ContextBuilder:
             # Join the reported helper calls to the static suffix when the
             # selected test is present in the stack. No new edges are inferred.
             reported = list(dict.fromkeys(source.entity_id for source, _ in reversed(frames)))
-            if path[0] in reported and any(source.entity_id in reported for source in tests):
+            if not dynamic and path[0] in reported and any(source.entity_id in reported for source in tests):
                 first = next(i for i, eid in enumerate(reported) if eid in {s.entity_id for s in tests})
                 last = reported.index(path[0])
                 if first <= last:
@@ -271,6 +309,8 @@ class _ContextBuilder:
             chain.extend(path)
         dependencies = ["## Dependency Chain", f"Target method: `{self.method_id}`"]
         if chain:
+            if dynamic:
+                dependencies.append("Executed call chain:")
             dependencies.append(" → ".join(f"`{_name(eid)}`" for eid in chain))
         else:
             dependencies.append("No call candidate chain to the target was found within the search budget; "
@@ -281,9 +321,9 @@ class _ContextBuilder:
             label = _name(source.method_id) if source.entity_id.startswith("test_method:") else source.method_id
             header = f"`{label}` — {source.file}:{start}\n```java\n"
             available = budget - len("\n\n".join(dependencies)) - len(header) - 8
-            if available < 100:
+            if available < len(text):
                 return
-            dependencies.append(header + _clip(text, min(1200, available)) + "\n```")
+            dependencies.append(header + text + "\n```")
 
         test_ids = {source.entity_id for source in tests}
         shown = set(test_ids)
@@ -311,12 +351,14 @@ class _ContextBuilder:
         return test_section + "\n\n" + failure_section + "\n\n" + "\n\n".join(dependencies)
 
 
-def build_repair_context(context, test_id: str, method_id: str, *, failure_report: str | None = None) -> str:
-    """Read assertions, stack frames and one bounded static call path as Markdown."""
+def build_repair_context(context, test_id: str, method_id: str, *, failure_report: str | None = None,
+                         execution_trace=None) -> str:
+    """Read test evidence and the selected test's call chain as Markdown."""
     graph = getattr(context, "graph", None) or getattr(getattr(context, "method_records", None), "graph", None)
     if graph is None:
         return (f"## Test Code\n\nTest: `{test_id}`\n\nSource index unavailable.\n\n"
                 "## Test Failure Message\n\n```text\n" +
                 _clip(failure_report or "Failure message unavailable.", FAILURE_LIMIT) +
                 f"\n```\n\n## Dependency Chain\n\nTarget method: `{method_id}`\n\nSource index unavailable.")
-    return _ContextBuilder(graph, str(test_id), method_id.removeprefix("func:"), failure_report).build()
+    return _ContextBuilder(graph, str(test_id), method_id.removeprefix("func:"),
+                           failure_report, execution_trace).build()

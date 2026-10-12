@@ -15,6 +15,8 @@ from src.debug.semantic_agent.prompt import orchestrator_system_prompt
 from src.preprocess.context import load_preprocess_context
 from src.preprocess.runner import PreprocessStageRunner
 from src.fault_graph.java_refresh import has_repair_index, refresh_java_files, update_java_failure_context
+from src.observability.java.tracing import collect_test_trace
+from src.utils.agent_logging import append_log
 
 
 FEEDBACK_LIMIT = 2000
@@ -48,6 +50,7 @@ class RepairOrchestrator:
         self.accepted_files: set[str] = set()
         self.current_failing_tests = []
         self.last_regression = None
+        self.execution_trace = None
 
     def _check_budget(self):
         if time.monotonic() - self.started_at >= self.time_budget_seconds:
@@ -117,7 +120,7 @@ class RepairOrchestrator:
         context = load_preprocess_context(self.preprocess_dir)
         agent = DebugDiagnosisAgent(
             self.llm_settings, context, self.paths.output_dir, test_id,
-            project=self.project,
+            project=self.project, execution_trace=self.execution_trace,
         )
         task = (
             f"<current_failure>\n{self._failure_text(failures)}\n</current_failure>\n"
@@ -136,7 +139,7 @@ class RepairOrchestrator:
         self._check_budget()
         agent = PatchGenerationAgent(
             self.llm_settings, self.paths.output_dir, test_id, method_id,
-            preprocess_data=preprocess_data,
+            preprocess_data=preprocess_data, execution_trace=self.execution_trace,
         )
         task = (
             f"<failure>\n{self._failure_text(failures)}\n</failure>\n"
@@ -218,6 +221,15 @@ class RepairOrchestrator:
                 test_id, selection_reason = self._select_test(failures, repair_round)
                 if not test_id:
                     return self._failure(history, selection_reason)
+                self._check_budget()
+                self.execution_trace = collect_test_trace(
+                    project=self.project, test_id=test_id,
+                    output_dir=self.paths.output_dir / "trace" / f"round-{repair_round}",
+                    deadline=self.started_at + self.time_budget_seconds,
+                )
+                append_log(self.paths.output_dir / f"orchestrator_agent_round-{repair_round}.log",
+                           "Selected test trace", json.dumps(self.execution_trace.summary(), ensure_ascii=False))
+                self._check_budget()
                 accepted_this_round = False
                 diagnosis_feedback = ""
 

@@ -8,7 +8,7 @@ from src.debug.semantic_agent.prompt import (
     debug_diagnosis_agent_system_prompt, debug_diagnosis_agent_few_shot,
 )
 from src.debug.semantic_agent.tools.evidence_tools import (
-    load_case_graph, read_entity_text, search_entities_text, tool_json,
+    load_case_graph, read_entity_text, search_entities_text, tool_json, relations_with_execution,
 )
 from src.fault_graph.kernel_oops import resolve_crash_method_id_from_kernel_oops
 from src.fault_graph.method_id_map import resolve_known_method_id
@@ -21,17 +21,21 @@ class DebugDiagnosisAgent:
     instructions = debug_diagnosis_agent_system_prompt + "\n" + debug_diagnosis_agent_few_shot
     max_steps = 10
 
-    def __init__(self, llm_settings, preprocess_data, output_dir, test_id, *, project=None, runtime=None):
+    def __init__(self, llm_settings, preprocess_data, output_dir, test_id, *, project=None, runtime=None,
+                 execution_trace=None):
         self.preprocess_data = preprocess_data
         self.test_id = str(test_id)
+        self.execution_trace = execution_trace if execution_trace is not None and execution_trace.test_id == self.test_id else None
         self._debug_context = load_case_graph(preprocess_data, self.test_id)
+        if self.execution_trace is not None:
+            self.execution_trace.bind_source_index(self._debug_context)
         self.runtime = runtime or RuntimeExperiments(project, preprocess_data, self.test_id)
         self.agent = Agent(
             tools=self._build_tools(), system_prompt=self.instructions,
             settings=llm_settings, name=self.name, output_dir=output_dir,
             test_id=self.test_id, max_steps=self.max_steps, validate=self.validate,
             tool_available=lambda name: (
-                name not in {"trace_functions", "probe_function"}
+                name != "probe_function"
                 or self.runtime.can_run_runtime_experiment
             ),
         )
@@ -61,7 +65,7 @@ class DebugDiagnosisAgent:
                 cursor: Continuation cursor returned by the previous search.
             """
             return search_entities_text(self._debug_context, query, entity_type,
-                                        operation_kind, limit, cursor)
+                                        operation_kind, limit, cursor, execution_trace=self.execution_trace)
 
         @function_tool
         def read_entity(entity_id: str, offset: int = 0, limit: int = 12000) -> str:
@@ -78,7 +82,8 @@ class DebugDiagnosisAgent:
                 offset: Starting character offset.
                 limit: Maximum characters to read.
             """
-            return read_entity_text(self._debug_context, entity_id, offset, limit)
+            return read_entity_text(self._debug_context, entity_id, offset, limit,
+                                    execution_trace=self.execution_trace)
 
         @function_tool
         def get_relations(entity_id: str, relation_type: str | None = None,
@@ -99,35 +104,8 @@ class DebugDiagnosisAgent:
                 limit: Maximum neighbors per page.
                 cursor: Continuation cursor from the preceding query.
             """
-            return tool_json(self._debug_context.get_relations, entity_id, relation_type,
-                             direction, limit, cursor)
-
-        @function_tool
-        def trace_functions(method_ids: list[str], max_events: int = 1000) -> str:
-            """Rerun the current Java test and trace selected methods.
-
-            Collect execution evidence on demand for a small set of indexed suspects.
-            Inspect the returned events, counts, collection status, and truncation.
-            Missing events can reflect collection limits; they do not by themselves
-            prove that a function did not execute. No preprocessing trace is required.
-
-            Args:
-                method_ids: Exact indexed function/method IDs returned by source tools.
-                max_events: Maximum Java method events to return.
-            """
-            if not isinstance(method_ids, list) or not method_ids:
-                return "status: validation_error\nerror: method_ids must contain at least one indexed function ID."
-            resolved = []
-            invalid = []
-            for method_id in method_ids:
-                value = self.resolve_method(str(method_id))
-                if value is None:
-                    invalid.append(str(method_id))
-                elif value not in resolved:
-                    resolved.append(value)
-            if invalid:
-                return "status: validation_error\nerror: unknown method_id(s): " + ", ".join(invalid)
-            return self.runtime.trace_functions(resolved, max_events)
+            return tool_json(relations_with_execution, self._debug_context, entity_id, relation_type,
+                             direction, limit, cursor, execution_trace=self.execution_trace)
 
         @function_tool
         def probe_function(method_id: str, probe_spec: str | dict[str, object] = "") -> str:
@@ -155,7 +133,7 @@ class DebugDiagnosisAgent:
                 return "status: validation_error\nerror: method_id is not an indexed function."
             return self.runtime.probe_function(resolved, probe_spec)
 
-        return [search_entities, read_entity, get_relations, trace_functions, probe_function]
+        return [search_entities, read_entity, get_relations, probe_function]
 
     def _format_crash_point(self) -> str:
         """Source-level failure site from the imported report."""

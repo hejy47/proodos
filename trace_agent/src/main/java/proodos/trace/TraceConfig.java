@@ -16,17 +16,20 @@ public final class TraceConfig {
     private final List<String> includePrefixes;
     private final Set<String> targetMethods;
     private final Set<String> targetClasses;
+    private final boolean includeTests;
 
     private TraceConfig(
         String destfile,
         boolean appendOutputs,
         List<String> includePrefixes,
-        Set<String> targetMethods
+        Set<String> targetMethods,
+        boolean includeTests
     ) {
         this.destfile = destfile;
         this.appendOutputs = appendOutputs;
         this.includePrefixes = includePrefixes;
-        Set<String> filteredTargetMethods = filterTargetMethods(targetMethods);
+        this.includeTests = includeTests;
+        Set<String> filteredTargetMethods = includeTests ? targetMethods : filterTargetMethods(targetMethods);
         this.targetMethods = Collections.unmodifiableSet(filteredTargetMethods);
         this.targetClasses = Collections.unmodifiableSet(extractTargetClasses(filteredTargetMethods));
     }
@@ -34,6 +37,7 @@ public final class TraceConfig {
     public static TraceConfig parse(String agentArgs) {
         String destfile = null;
         boolean appendOutputs = false;
+        boolean includeTests = false;
         List<String> includePrefixes = new ArrayList<String>();
         Set<String> targetMethods = new HashSet<String>();
         if (agentArgs != null && !agentArgs.trim().isEmpty()) {
@@ -59,6 +63,8 @@ public final class TraceConfig {
                     }
                 } else if ("appendOutputs".equals(key)) {
                     appendOutputs = "true".equalsIgnoreCase(value);
+                } else if ("includeTests".equals(key)) {
+                    includeTests = "true".equalsIgnoreCase(value);
                 } else if ("includes".equals(key)) {
                     for (String prefix : value.split("[,:]")) {
                         String cleaned = prefix.trim();
@@ -82,7 +88,8 @@ public final class TraceConfig {
             destfile,
             appendOutputs,
             Collections.unmodifiableList(includePrefixes),
-            targetMethods
+            targetMethods,
+            includeTests
         );
     }
 
@@ -115,7 +122,7 @@ public final class TraceConfig {
             || dottedName.startsWith("proodos.trace.")) {
             return false;
         }
-        if (isProbableTestClass(dottedName)) {
+        if (!includeTests && isProbableTestClass(dottedName)) {
             return false;
         }
         if (includePrefixes.isEmpty()) {
@@ -132,7 +139,7 @@ public final class TraceConfig {
     }
 
     public boolean shouldProbeMethod(String methodId) {
-        if (isProbableTestMethod(methodId)) {
+        if (!includeTests && isProbableTestMethod(methodId)) {
             return false;
         }
         return targetMethods.isEmpty() || targetMethods.contains(methodId);
@@ -157,7 +164,7 @@ public final class TraceConfig {
         try {
             for (String rawLine : Files.readAllLines(Paths.get(path), StandardCharsets.UTF_8)) {
                 String cleaned = rawLine.trim();
-                if (!cleaned.isEmpty() && !isProbableTestMethod(cleaned)) {
+                if (!cleaned.isEmpty()) {
                     methods.add(cleaned);
                 }
             }

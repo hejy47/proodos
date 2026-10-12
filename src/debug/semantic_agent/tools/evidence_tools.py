@@ -166,7 +166,7 @@ def _entity_brief(graph: EvidenceGraph, item: dict) -> str:
 
 def search_entities_text(graph: EvidenceGraph, query: str, entity_type: str | None = None,
                          operation_kind: str | None = None, limit: int = 10,
-                         cursor: str | None = None) -> str:
+                         cursor: str | None = None, *, execution_trace=None) -> str:
     try:
         result = graph.search_code(query, entity_type, operation_kind, min(limit, 10), cursor)
     except (ValueError, KeyError) as exc:
@@ -177,6 +177,8 @@ def search_entities_text(graph: EvidenceGraph, query: str, entity_type: str | No
                  f"    entity_type: {item['entity_type']}", f"    name: {item['name']}"]
         if item.get("method_id"):
             lines.append(f"    method_id: {item['method_id']}")
+            if execution_trace is not None:
+                lines.append("    " + _text_fields(execution_trace.coverage(item["method_id"])).replace("\n", "\n    "))
         if item.get("location"):
             lines.append(f"    location: {_location_text(item['location'])}")
         lines.append(f"    brief: {_entity_brief(graph, item)}")
@@ -196,7 +198,7 @@ def search_entities_text(graph: EvidenceGraph, query: str, entity_type: str | No
 
 
 def read_entity_text(graph: EvidenceGraph, entity_id: str, offset: int = 0,
-                     limit: int = 12000) -> str:
+                     limit: int = 12000, *, execution_trace=None) -> str:
     try:
         entity_id = graph.resolve(entity_id)
         if offset < 0 or not 1 <= limit <= 30000:
@@ -209,6 +211,8 @@ def read_entity_text(graph: EvidenceGraph, entity_id: str, offset: int = 0,
     fields = [f"entity_id: {entity_id}", f"entity_type: {entity['entity_type']}"]
     if content.get("method_id"):
         fields.append(f"method_id: {content['method_id']}")
+        if execution_trace is not None:
+            fields.append(_text_fields(execution_trace.coverage(content["method_id"])))
     if location:
         fields.append(f"location: {_location_text(location)}")
     if "source_code" in content or entity["entity_type"] == "function":
@@ -237,3 +241,25 @@ def read_entity_text(graph: EvidenceGraph, entity_id: str, offset: int = 0,
     )
     return format_tool_result("read_entity", status="success",
                               summary=f"{label} for {entity_id}.", fields=fields)
+
+
+def relations_with_execution(graph, entity_id, relation_type=None, direction="both",
+                             limit=20, cursor=None, *, execution_trace=None):
+    result = graph.get_relations(entity_id, relation_type, direction, limit, cursor)
+    if execution_trace is None:
+        return result
+
+    def method(entity):
+        return graph.entities[graph.resolve(entity)]["content"].get("method_id")
+
+    current = method(entity_id)
+    if current:
+        result["coverage"] = execution_trace.coverage(current)
+    for item in result.get("items", []):
+        neighbor = item.get("neighbor", {})
+        if neighbor.get("method_id"):
+            neighbor["coverage"] = execution_trace.coverage(neighbor["method_id"])
+        caller, callee = method(item["source"]), method(item["target"])
+        if caller and callee and item["relation_type"] == "calls_candidate":
+            item["observed_call"] = execution_trace.observes_call(caller, callee)
+    return result

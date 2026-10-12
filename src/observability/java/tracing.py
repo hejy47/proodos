@@ -1,222 +1,173 @@
+"""Collect one selected test's method coverage and deduplicated runtime calls."""
 from __future__ import annotations
 
 import csv
+from dataclasses import dataclass, field
 from pathlib import Path
-import tempfile
-from typing import Any, Iterable
+import time
 
 from src.java_runtime.tracing import JavaTraceCollector
 from src.java_runtime.test_runner_builder import build_test_runner
 from src.java_runtime.trace_agent_builder import build_trace_agent
 from src.models import TestCase
+from src.fault_graph.method_id_map import build_trace_method_map, has_unqualified_descriptor
+from src.utils.java_source import discover_package_prefixes, discover_top_level_types, extract_package_name
 from src.utils.java_util import split_test_id
 
 
-DEFAULT_MAX_EVENTS = 1000
-MAX_EVENTS_LIMIT = 10000
+@dataclass
+class JavaExecutionTrace:
+    test_id: str
+    status: str = "unavailable"
+    counts: dict[str, int] = field(default_factory=dict)
+    calls: set[tuple[str, str]] = field(default_factory=set)
+    include_prefixes: tuple[str, ...] = ()
+    test_outcome: str | None = None
+    failure_report: str = ""
+    error: str = ""
+    duration_seconds: float = 0.0
+    incoming: dict[str, set[str]] = field(default_factory=dict)
+    source_to_runtime: dict[str, str] = field(default_factory=dict)
+    runtime_to_source: dict[str, str] = field(default_factory=dict)
+    _ambiguous_ids: set[str] = field(default_factory=set, repr=False)
+    _source_ids: frozenset[str] | None = field(default=None, repr=False)
 
+    def bind_source_index(self, graph):
+        """Associate runtime IDs without loading unrelated source bodies."""
+        if self.status != "success" or graph is None:
+            return
+        db = getattr(graph, "connection", None)
+        if db is not None and getattr(graph, "_schema_version", 1) >= 2:
+            source_ids = frozenset(row[0] for row in db.execute(
+                "SELECT method_id FROM entities WHERE kind IN ('function','test_method') "
+                "AND method_id IS NOT NULL"))
+        else:
+            source_ids = frozenset(entity["content"]["method_id"] for entity in graph.entities.values()
+                                   if entity["entity_type"] in {"function", "test_method"}
+                                   and entity["content"].get("method_id"))
+        if source_ids == self._source_ids:
+            return
+        self.source_to_runtime, self._ambiguous_ids = build_trace_method_map(source_ids, self.counts)
+        self.runtime_to_source = {runtime: source for source, runtime in self.source_to_runtime.items()}
+        self._source_ids = source_ids
 
-def collect_java_trace(
-    *,
-    project: Any,
-    test_id: str,
-    method_ids: Iterable[str],
-    max_events: int = DEFAULT_MAX_EVENTS,
-) -> dict[str, Any]:
-    """Run one Java test with the trace agent and return candidate method events.
-
-    This is an on-demand runtime experiment. It does not read or write the
-    preprocess dataset; temporary reports are discarded when the call returns.
-    """
-    requested = list(dict.fromkeys(str(method_id).strip() for method_id in method_ids))
-    if not requested or any(not method_id for method_id in requested):
-        return _error("validation_error", "method_ids must contain at least one non-empty method ID")
-    if not isinstance(max_events, int) or max_events <= 0:
-        return _error("validation_error", "max_events must be a positive integer")
-    max_events = min(max_events, MAX_EVENTS_LIMIT)
-    if project is None or getattr(project, "spec", None) is None:
-        return _error("execution_error", "Java tracing requires a project with a project spec")
-
-    try:
-        test_class, test_method = split_test_id(str(test_id))
-        if test_method == "*" or not test_class.strip() or not test_method.strip():
-            return _error("validation_error", f"trace_functions requires a single test method: {test_id}")
-
-        runner_build = build_test_runner()
-        if not runner_build.success:
-            detail = runner_build.stderr.strip() or runner_build.stdout.strip() or "test runner build failed"
-            return _error("execution_error", f"Could not build Java test runner: {detail}")
-        agent_build = build_trace_agent()
-        if not agent_build.success:
-            detail = agent_build.stderr.strip() or agent_build.stdout.strip() or "trace agent build failed"
-            return _error("execution_error", f"Could not build Java trace agent: {detail}")
-
-        testcase = TestCase(
-            test_id=str(test_id),
-            class_name=test_class,
-            method_name=test_method,
-            metadata={"framework": "JUNIT"},
-        )
-        class_prefixes = list(dict.fromkeys(method_id.split("#", 1)[0] for method_id in requested))
-
-        with tempfile.TemporaryDirectory(prefix="proodos-java-trace-") as temp_dir:
-            stage_dir = Path(temp_dir)
-            trace_runner = JavaTraceCollector(project)
-            spectra_path = stage_dir / "spectra.csv"
-            tests_path = stage_dir / "tests.csv"
-            trace_path = stage_dir / "trace.txt"
-            coverage = trace_runner.collect_reports(
-                selected_tests=[testcase],
-                agent_jar_path=agent_build.agent_jar_path,
-                include_prefixes=class_prefixes,
-                stage_dir=stage_dir,
-                spectra_path=spectra_path,
-                tests_report_path=tests_path,
-                trace_report_path=trace_path,
-            )
-            if coverage:
-                error = next((record.execution_error for record in coverage if record.execution_error), "Java trace collection failed")
-                return _error("execution_error", error, test_id=str(test_id), requested=requested)
-
-            method_names = trace_runner._read_trace_spectra(spectra_path)
-            test_ids_by_index = trace_runner._read_trace_test_ids_by_index(tests_path)
-            matching_index = next(
-                (
-                    index
-                    for index, candidate in test_ids_by_index.items()
-                    if _normalize_test_id(candidate) == _normalize_test_id(str(test_id))
-                ),
-                None,
-            )
-            if matching_index is None:
-                return _error(
-                    "execution_error",
-                    f"Java trace report did not contain the selected test {test_id}",
-                    test_id=str(test_id),
-                    requested=requested,
-                )
-
-            outcome = _read_outcome(tests_path, matching_index)
-            raw_events = _read_call_events(trace_path, matching_index, method_names)
-            return _summarize_events(
-                test_id=str(test_id),
-                outcome=outcome,
-                requested=requested,
-                raw_events=raw_events,
-                max_events=max_events,
-            )
-    except Exception as exc:
-        return _error("execution_error", f"{type(exc).__name__}: {exc}", test_id=str(test_id), requested=requested)
-
-
-def _read_outcome(tests_path: Path, target_index: int) -> str | None:
-    for row in _read_csv(tests_path):
-        try:
-            index = int(str(row.get("id", "")).strip())
-        except ValueError:
-            continue
-        if index == target_index:
-            return str(row.get("outcome", "")).strip().upper() or None
-    return None
-
-
-def _read_call_events(trace_path: Path, target_index: int, method_names: dict[int, str]) -> list[dict[str, str]]:
-    if not trace_path.is_file():
-        return []
-    for line in trace_path.read_text(encoding="utf-8", errors="replace").splitlines():
-        parts = line.split("\t")
-        if len(parts) < 3:
-            continue
-        try:
-            index = int(parts[0].strip())
-        except ValueError:
-            continue
-        if index != target_index:
-            continue
-        events: list[dict[str, str]] = []
-        for payload in parts[2].split(","):
-            payload = payload.strip()
-            if len(payload) < 2 or payload[0] not in {"e", "x"}:
-                continue
-            try:
-                method_number = int(payload[1:])
-            except ValueError:
-                continue
-            method_id = method_names.get(method_number)
-            if method_id:
-                events.append({"event": "enter" if payload[0] == "e" else "exit", "method_id": method_id})
-        return events
-    return []
-
-
-def _summarize_events(
-    *,
-    test_id: str,
-    outcome: str | None,
-    requested: list[str],
-    raw_events: list[dict[str, str]],
-    max_events: int,
-) -> dict[str, Any]:
-    requested_set = set(requested)
-    matched_events = [event for event in raw_events if _matches_requested(event["method_id"], requested_set)]
-    visible_events = matched_events[:max_events]
-    counts: dict[str, int] = {}
-    observed: list[str] = []
-    for event in matched_events:
-        if event["event"] != "enter":
-            continue
-        method_id = event["method_id"]
-        canonical = _canonical_requested(method_id, requested)
-        counts[canonical] = counts.get(canonical, 0) + 1
-        if canonical not in observed:
-            observed.append(canonical)
-    observed_set = set(observed)
-    return {
-        "status": "success",
-        "test_id": test_id,
-        "test_outcome": outcome,
-        "trace_source": "on-demand Java agent",
-        "requested": requested,
-        "observed": observed,
-        "not_observed": [method_id for method_id in requested if method_id not in observed_set],
-        "counts": counts,
-        "events": visible_events,
-        "event_count": len(matched_events),
-        "truncated": len(matched_events) > max_events,
-    }
-
-
-def _matches_requested(observed_method: str, requested: set[str]) -> bool:
-    if observed_method in requested:
-        return True
-    return any(_method_without_descriptor(observed_method) == _method_without_descriptor(item) for item in requested)
-
-
-def _canonical_requested(observed_method: str, requested: list[str]) -> str:
-    return next(
-        (item for item in requested if item == observed_method or _method_without_descriptor(item) == _method_without_descriptor(observed_method)),
-        observed_method,
-    )
-
-
-def _method_without_descriptor(method_id: str) -> str:
-    class_name, separator, method = method_id.partition("#")
-    if not separator:
+    def runtime_method_id(self, method_id: str | None) -> str | None:
+        if not method_id:
+            return None
+        if method_id in self.source_to_runtime:
+            return self.source_to_runtime[method_id]
+        if method_id in self.counts:
+            return method_id
+        if method_id in self._ambiguous_ids or "@" in method_id or has_unqualified_descriptor(method_id):
+            return None
         return method_id
-    method_name = method.split("(", 1)[0]
-    return f"{class_name}#{method_name}"
+
+    def covers(self, method_id: str) -> bool | None:
+        if self.status != "success":
+            return None
+        method_id = self.runtime_method_id(method_id)
+        if method_id is None:
+            return None
+        if method_id in self.counts:
+            return True
+        owner = method_id.split("#", 1)[0]
+        if any(owner.startswith(prefix) for prefix in self.include_prefixes):
+            return False
+        return None
+
+    def coverage(self, method_id: str) -> dict:
+        result = {"test_id": self.test_id, "covered": self.covers(method_id)}
+        if result["covered"] is not None:
+            result["call_count"] = self.counts.get(self.runtime_method_id(method_id), 0)
+        return result
+
+    def observes_call(self, caller: str, callee: str) -> bool | None:
+        if self.covers(caller) is None or self.covers(callee) is None:
+            return None
+        return (self.runtime_method_id(caller), self.runtime_method_id(callee)) in self.calls
+
+    def summary(self) -> dict:
+        return {"test_id": self.test_id, "status": self.status,
+                "test_outcome": self.test_outcome, "methods": len(self.counts),
+                "calls": len(self.calls), "duration_seconds": round(self.duration_seconds, 3),
+                "error": self.error}
 
 
-def _read_csv(path: Path) -> list[dict[str, str]]:
-    if not path.is_file():
-        return []
-    with path.open("r", encoding="utf-8", newline="") as handle:
-        return [dict(row) for row in csv.DictReader(handle)]
-
-
-def _normalize_test_id(test_id: str) -> str:
-    return test_id.strip().replace("::", "#")
-
-
-def _error(status: str, message: str, **extra: Any) -> dict[str, Any]:
-    return {"status": status, "error": message, **extra}
+def collect_test_trace(*, project, test_id: str, output_dir: Path,
+                       deadline: float | None = None) -> JavaExecutionTrace:
+    """Rerun the selected failure once; the same result serves FL and patching."""
+    trace = JavaExecutionTrace(str(test_id))
+    started = time.monotonic()
+    try:
+        if project is None or getattr(project, "spec", None) is None:
+            raise ValueError("Java tracing requires a project")
+        test_class, test_method = split_test_id(trace.test_id)
+        if test_method == "*":
+            raise ValueError("Tracing requires a single selected test method")
+        runner_build, agent_build = build_test_runner(), build_trace_agent()
+        for build in (runner_build, agent_build):
+            if not build.success:
+                raise RuntimeError(build.stderr.strip() or build.stdout.strip() or "Java tool build failed")
+        roots = [*project.discover_source_roots(), *project.discover_test_roots()]
+        prefixes = [package + "." for package in discover_package_prefixes(roots)]
+        for root in roots:
+            for file in root.glob("*.java"):
+                if not extract_package_name(file):
+                    prefixes.extend(discover_top_level_types(file))
+        prefixes.append(test_class)
+        trace.include_prefixes = tuple(dict.fromkeys(prefixes))
+        stage = Path(output_dir)
+        stage.mkdir(parents=True, exist_ok=True)
+        spectra, tests, events = (stage / name for name in ("spectra.csv", "tests.csv", "trace.txt"))
+        # A failed rerun must never reuse reports from a previous collection.
+        for path in (spectra, tests, events):
+            path.unlink(missing_ok=True)
+        runner = JavaTraceCollector(project)
+        errors = runner.collect_reports(
+            selected_tests=[TestCase(trace.test_id, test_class, test_method, metadata={"framework": "JUNIT"})],
+            agent_jar_path=agent_build.agent_jar_path,
+            include_prefixes=list(trace.include_prefixes), stage_dir=stage,
+            spectra_path=spectra, tests_report_path=tests, trace_report_path=events,
+            deadline=deadline,
+        )
+        if errors:
+            raise RuntimeError(errors[0].execution_error)
+        methods = runner._read_trace_spectra(spectra)
+        with tests.open(encoding="utf-8", newline="") as stream:
+            rows = [row for row in csv.DictReader(stream)
+                    if row["name"].replace("#", "::", 1) == trace.test_id.replace("#", "::", 1)]
+        if len(rows) != 1:
+            raise ValueError("Trace report must contain exactly one selected test")
+        row = rows[0]
+        trace.test_outcome = row["outcome"]
+        trace.failure_report = row.get("stacktrace") or ""
+        if trace.test_outcome not in {"FAIL", "ERROR"}:
+            raise ValueError("Selected failing test did not fail during trace collection")
+        matching = [line.split("\t") for line in events.read_text(encoding="utf-8").splitlines()
+                    if line.split("\t", 1)[0] == row["id"]]
+        if len(matching) != 1 or len(matching[0]) != 5:
+            raise ValueError("Trace report is missing method counts or runtime call relations")
+        _, _, _, counts, calls = matching[0]
+        parsed_counts, parsed_calls = {}, set()
+        for payload in filter(None, counts.split(",")):
+            number, count = map(int, payload.split(":"))
+            if count <= 0:
+                raise ValueError("Invalid trace method count")
+            parsed_counts[methods[number]] = count
+        for payload in filter(None, calls.split(",")):
+            caller, callee = map(int, payload.split(">"))
+            pair = (methods[caller], methods[callee])
+            if not all(method in parsed_counts for method in pair):
+                raise ValueError("Runtime call endpoints must have been executed")
+            parsed_calls.add(pair)
+        if not parsed_counts:
+            raise ValueError("Trace collection recorded no project methods")
+        trace.counts, trace.calls = parsed_counts, parsed_calls
+        for caller, callee in trace.calls:
+            trace.incoming.setdefault(callee, set()).add(caller)
+        trace.status = "success"
+    except Exception as exc:
+        trace.error = f"{type(exc).__name__}: {exc}"
+    finally:
+        trace.duration_seconds = time.monotonic() - started
+    return trace

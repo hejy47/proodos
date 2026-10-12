@@ -45,6 +45,82 @@ class StackFrame:
     line: int | None = None
 
 
+_JVM_TYPE = re.compile(r"\[*(?:[BCDFIJSZ]|L[^;()]+;)")
+
+
+def _trace_signature(method_id: str):
+    """Parse the full descriptor, preserving arrays, primitives and return type."""
+    owner, separator, signature = method_id.partition("#")
+    name, opening, tail = signature.partition("(")
+    arguments, closing, result = tail.partition(")")
+    # Location suffixes distinguish duplicate source declarations. They must
+    # participate in ambiguity checks, but cannot identify runtime methods.
+    result = result.split("@", 1)[0]
+    parameters = _JVM_TYPE.findall(arguments)
+    if (not separator or not owner or not name or not opening or not closing
+            or "".join(parameters) != arguments
+            or result != "V" and not _JVM_TYPE.fullmatch(result)):
+        return None
+    return (owner, name, len(parameters)), (*parameters, result)
+
+
+def has_unqualified_descriptor(method_id: str) -> bool:
+    signature = _trace_signature(method_id)
+    return signature is not None and any(
+        token.lstrip("[").startswith("L") and "/" not in token and "." not in token
+        for token in signature[1]
+    )
+
+
+def _trace_type_matches(source: str, runtime: str) -> bool:
+    if source == runtime:
+        return True
+    source_base, runtime_base = source.lstrip("["), runtime.lstrip("[")
+    if (len(source) - len(source_base) != len(runtime) - len(runtime_base)
+            or not source_base.startswith("L") or not runtime_base.startswith("L")):
+        return False
+    source_name = source_base[1:-1].replace(".", "/").rsplit("/", 1)[-1]
+    runtime_name = runtime_base[1:-1].replace(".", "/").rsplit("/", 1)[-1]
+    return source_name == runtime_name or (
+        "$" not in source_name and source_name == runtime_name.rsplit("$", 1)[-1]
+    )
+
+
+def build_trace_method_map(source_ids, runtime_ids) -> tuple[dict[str, str], set[str]]:
+    """Return exact/unique ID matches and source IDs with ambiguous matches.
+
+    All indexed overloads, including unexecuted methods, must be supplied.
+    Fallback compares the full owner, method name and ordered simple type
+    names, preserving primitives, array dimensions and return type. Both
+    sides must have a unique candidate; ambiguous matches remain unavailable.
+    """
+    sources, runtime = set(source_ids), set(runtime_ids)
+    mapping = {method_id: method_id for method_id in sources & runtime}
+    groups = {}
+    for method_id in sources:
+        parsed = _trace_signature(method_id)
+        if parsed:
+            key, types = parsed
+            groups.setdefault(key, []).append((method_id, types))
+    candidates, reverse = {}, {}
+    for method_id in runtime:
+        parsed = _trace_signature(method_id)
+        if parsed is None:
+            continue
+        key, types = parsed
+        for source_id, source_types in groups.get(key, ()):
+            if all(_trace_type_matches(a, b) for a, b in zip(source_types, types)):
+                candidates.setdefault(source_id, set()).add(method_id)
+                reverse.setdefault(method_id, set()).add(source_id)
+    for source_id, matches in candidates.items():
+        if source_id in mapping or "@" in source_id or len(matches) != 1:
+            continue
+        method_id = next(iter(matches))
+        if len(reverse[method_id]) == 1:
+            mapping[source_id] = method_id
+    return mapping, set(candidates) - mapping.keys()
+
+
 def fingerprint_spectra_method_id(method_id: str) -> tuple[str, str, int] | None:
     if "#" not in method_id:
         return None

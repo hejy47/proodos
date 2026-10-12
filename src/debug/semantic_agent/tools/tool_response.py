@@ -1,7 +1,7 @@
 """Agent-facing tool result formatting.
 
 Evidence-first observations for the debugging tools:
-- ``probe_function`` / ``trace_functions`` return evidence summaries without
+- ``probe_function`` returns evidence summaries without
   coaching the agent on causal roles.
 - Source-navigation tools may still use the ``format_tool_result`` envelope
   (status / summary / body).
